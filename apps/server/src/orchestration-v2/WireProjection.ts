@@ -11,6 +11,7 @@ import {
   toolOutputIndicatesFailure,
 } from "@t3tools/shared/toolOutput";
 import { fileChangeStats } from "@t3tools/shared/fileChangeStats";
+import { codexFileChangeStats } from "./Adapters/codexFileChange.ts";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
@@ -119,7 +120,15 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
         item.additions === undefined &&
         item.deletions === undefined
       ) {
-        return { ...projected, ...fileChangeStats(diffStr) };
+        const change = item.changes?.length === 1 ? item.changes[0] : undefined;
+        const stats =
+          item.nativeItemRef?.driver === "codex" &&
+          diffStr !== undefined &&
+          change !== undefined &&
+          (change.operation === "add" || change.operation === "delete")
+            ? codexFileChangeStats([{ kind: { type: change.operation }, diff: diffStr }])
+            : fileChangeStats(diffStr);
+        return { ...projected, ...stats };
       }
       return item.status === "failed" && diffStr?.trim()
         ? { ...projected, diffStr: truncateDetail(diffStr) }

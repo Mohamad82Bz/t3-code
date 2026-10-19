@@ -385,6 +385,36 @@ describe("orchestration V2 wire projection", () => {
     expect(projectTurnItemForWire({ ...item, status: "failed" })).not.toHaveProperty("additions");
   });
 
+  it("recovers whole-file Codex creation counts without guessing for other providers", () => {
+    const item = {
+      ...base,
+      type: "file_change" as const,
+      fileName: "demo.txt",
+      nativeItemRef: {
+        driver: ProviderDriverKind.make("codex"),
+        nativeId: "create-file",
+        strength: "strong" as const,
+      },
+      changes: [{ operation: "add" as const, path: "demo.txt" }],
+      diffStr: "one\ntwo\n",
+    };
+    const projected = projectTurnItemForWire(item);
+    expect(projected).toMatchObject({ additions: 2, deletions: 0 });
+    expect(projected).not.toHaveProperty("diffStr");
+    expect(projectTurnItemForWire(projected)).toEqual(projected);
+    expect(item).not.toHaveProperty("additions");
+    expect(projectTurnItemForWire({ ...item, nativeItemRef: null })).not.toHaveProperty(
+      "additions",
+    );
+    expect(projectTurnItemForWire({ ...item, status: "failed" })).not.toHaveProperty("additions");
+    expect(
+      projectTurnItemForWire({
+        ...item,
+        changes: [...item.changes, { operation: "add", path: "other.txt" }],
+      }),
+    ).not.toHaveProperty("additions");
+  });
+
   it("retains only result identities and failure metadata in live tool events", () => {
     const output = {
       isError: true,

@@ -2641,9 +2641,9 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       const nativeThreadId = "diff-count-thread";
       const nativeTurnId = "diff-count-turn";
       const changes = [
-        { path: "/repo/new.txt", kind: { type: "add" }, diff: "@@ -0,0 +1,2 @@\n+one\n+two\n" },
+        { path: "/repo/new.txt", kind: { type: "add" }, diff: "one\ntwo\n" },
         { path: "/repo/edit.txt", kind: { type: "update" }, diff: "@@ -1 +1 @@\n-old\n+new\n" },
-        { path: "/repo/remove.txt", kind: { type: "delete" }, diff: "@@ -1 +0,0 @@\n-gone\n" },
+        { path: "/repo/remove.txt", kind: { type: "delete" }, diff: "gone\n" },
       ];
       const transcript = makeCodexReplayTranscript({
         scenario: "diff-counts",

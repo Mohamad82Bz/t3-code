@@ -34,7 +34,7 @@ import {
 } from "@t3tools/contracts";
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { AgentScope } from "@t3tools/shared/AgentScope";
-import { fileChangeStats } from "@t3tools/shared/fileChangeStats";
+import { codexFileChangeStats } from "./codexFileChange.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   COMPUTER_USE_TOOL_SOURCE,
@@ -3592,7 +3592,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 path: change.path,
               })),
               diffStr,
-              ...fileChangeStats(diffStr),
+              ...codexFileChangeStats(item.changes),
             };
             return { node, turnItem };
           });
