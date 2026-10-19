@@ -299,6 +299,25 @@ describe("work entry labels", () => {
     );
   });
 
+  it.each([
+    "C:/workspace/packages/shared/example.ts",
+    "C:\\workspace\\packages\\shared\\example.ts",
+    "/workspace/shared/example.ts",
+  ])("uses only the file name for file-change titles: %s", (fileName) => {
+    const change = {
+      ...entry,
+      itemType: "file_change" as const,
+      detail: fileName,
+      changedFiles: [fileName],
+      structuredPayload: { type: "file_change", fileName } as NonNullable<
+        WorkLogEntry["structuredPayload"]
+      >,
+    };
+    expect(workEntryDisplayLabel(change, "/other/worktree")).toBe("example.ts");
+    expect(liveWorkEntryLabel(change, "/other/worktree", true)).toBe("example.ts");
+    expect(change.structuredPayload).toMatchObject({ fileName });
+  });
+
   it("labels file reads with the path and never the file body", () => {
     const readEntry = {
       ...entry,

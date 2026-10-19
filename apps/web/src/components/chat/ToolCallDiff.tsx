@@ -8,6 +8,7 @@ import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { DIFF_VIEW_UNSAFE_CSS } from "../diffs/StyledDiffCodeView";
 import { toolCallDiff } from "./toolCallDiffData";
+import { ToolCodeSurface } from "./ToolCodeSurface";
 
 export function ToolCallDiff({
   item,
@@ -23,12 +24,7 @@ export function ToolCallDiff({
     </pre>
   );
   return (
-    <div
-      role="region"
-      aria-label={`Diff for ${item.fileName}`}
-      tabIndex={0}
-      className="diff-render-surface max-h-80 overflow-auto overscroll-contain rounded-md border border-border/60 bg-background select-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
+    <ToolCodeSurface label={`Diff for ${item.fileName}`}>
       <RenderErrorBoundary fallback={raw}>
         {patch.kind === "raw" ? (
           raw
@@ -52,6 +48,6 @@ export function ToolCallDiff({
           </DiffWorkerPoolProvider>
         )}
       </RenderErrorBoundary>
-    </div>
+    </ToolCodeSurface>
   );
 }

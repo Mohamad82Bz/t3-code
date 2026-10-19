@@ -152,6 +152,56 @@ function commandOutputText(output: string): string {
     .join("\n");
 }
 
+export function readToolFile(item: OrchestrationV2TurnItem): {
+  readonly fileName: string;
+  readonly contents: string;
+  readonly startLine: number;
+} | null {
+  if (
+    item.type !== "dynamic_tool" ||
+    item.toolName?.toLowerCase() !== "read" ||
+    item.outputOmitted ||
+    item.status === "failed"
+  ) {
+    return null;
+  }
+  const input = isRecord(item.input) ? item.input : undefined;
+  const output =
+    typeof item.output === "string" ? (parseJson(item.output) ?? item.output) : item.output;
+  if (isRecord(output) && output.type === "text" && isRecord(output.file)) {
+    const file = output.file;
+    if (typeof file.content === "string" && typeof file.filePath === "string") {
+      return {
+        fileName: file.filePath,
+        contents: file.content,
+        startLine:
+          typeof file.startLine === "number" &&
+          Number.isSafeInteger(file.startLine) &&
+          file.startLine > 0
+            ? file.startLine
+            : 1,
+      };
+    }
+  }
+  const fileName = input?.file_path ?? input?.path;
+  const text = textFromBlocks(output, 0);
+  if (typeof fileName !== "string" || text === null) return null;
+  // Older Claude transcripts retain cat -n output rather than the structured Read result.
+  const lines = text.split(/\r?\n/);
+  const contents: string[] = [];
+  let startLine = 0;
+  for (const line of lines) {
+    if (contents.length > 0 && line === "") continue;
+    if (contents.length > 0 && line.startsWith("<system-reminder>")) break;
+    const match = /^[ \t]*(\d+)(?:→|\t)(.*)$/.exec(line);
+    if (!match || Number(match[1]) !== (startLine || Number(match[1])) + contents.length)
+      return null;
+    if (startLine === 0) startLine = Number(match[1]);
+    contents.push(match[2]!);
+  }
+  return contents.length > 0 ? { fileName, contents: contents.join("\n"), startLine } : null;
+}
+
 export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null {
   switch (item.type) {
     case "command_execution":
@@ -159,7 +209,8 @@ export function turnItemOutputText(item: OrchestrationV2TurnItem): string | null
     case "dynamic_tool":
       return item.outputOmitted === true
         ? null
-        : formatToolValue(item.output, item.viewedImagePath !== undefined);
+        : (readToolFile(item)?.contents ??
+            formatToolValue(item.output, item.viewedImagePath !== undefined));
     case "file_search":
       return item.results?.length
         ? item.results

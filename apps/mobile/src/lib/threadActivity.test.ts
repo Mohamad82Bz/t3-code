@@ -289,6 +289,25 @@ describe("buildThreadFeed", () => {
     expect(items[0]).toMatchObject({ output: rawOutput });
   });
 
+  it.each([
+    "C:/workspace/shared/example.ts",
+    "C:\\workspace\\shared\\example.ts",
+    "/workspace/shared/example.ts",
+  ])("keeps file-change titles short without losing the expanded path: %s", (fileName) => {
+    const change: OrchestrationV2TurnItem = {
+      ...base("file-name", "2026-06-20T00:00:04.000Z", 3),
+      type: "file_change",
+      fileName,
+    };
+    const [activity] = buildThreadFeed([projected(change, 0)]).flatMap((entry) =>
+      entry.type === "activity-group" ? entry.activities : [],
+    );
+    expect(activity).toBeDefined();
+    expect(workEntryRowLabel(activity!.workEntry)).toBe("example.ts");
+    expect(workEntryRowLabel(activity!.workEntry, true)).toBe("example.ts");
+    expect(JSON.parse(activity!.getFullDetail()!).item.fileName).toBe(fileName);
+  });
+
   it("expands tool rows only when they have detail or withheld output", () => {
     const items: OrchestrationV2TurnItem[] = [
       { ...command(), input: "", outputOmitted: true },
@@ -1456,6 +1475,15 @@ describe("buildThreadFeed", () => {
       if (row?.type !== "activity-group") throw new Error("Expected the call's own row");
       return row.activities[0]?.groupStandIn;
     };
+
+    it("uses the basename for a lone file change's stand-in row", () => {
+      const change: OrchestrationV2TurnItem = {
+        ...base("file-singleton", startedAt, 1),
+        type: "file_change",
+        fileName: "C:\\workspace\\packages\\example.ts",
+      };
+      expect(standIn(liveRows([change]))?.label).toBe("example.ts");
+    });
 
     it.each([
       { driver: "claudeAgent", label: "Check repository status" },

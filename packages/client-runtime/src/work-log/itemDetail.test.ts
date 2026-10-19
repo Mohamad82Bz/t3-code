@@ -2,7 +2,7 @@ import { ThreadId, TurnItemId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { turnItemOutputImages, turnItemOutputText } from "./itemDetail.ts";
+import { readToolFile, turnItemOutputImages, turnItemOutputText } from "./itemDetail.ts";
 
 const screenshot = {
   id: TurnItemId.make("tool-screenshot"),
@@ -29,6 +29,68 @@ const screenshot = {
   completedAt: DateTime.makeUnsafe("2026-10-05T00:00:01.000Z"),
   updatedAt: DateTime.makeUnsafe("2026-10-05T00:00:01.000Z"),
 };
+
+describe("read tool file contents", () => {
+  const read = { ...screenshot, toolName: "Read", input: { file_path: "C:\\project\\demo.ts" } };
+
+  it("extracts structured Claude Read output without serializing source code", () => {
+    const file = {
+      filePath: "C:\\project\\demo.ts",
+      content: 'const path = "\\\\tmp";\n\n',
+      startLine: 24,
+    };
+    const item = { ...read, output: { type: "text", file } };
+    expect(readToolFile(item)).toEqual({
+      fileName: file.filePath,
+      contents: file.content,
+      startLine: 24,
+    });
+    expect(turnItemOutputText(item)).toBe(file.content);
+    expect(readToolFile({ ...item, output: JSON.stringify(item.output) })).toEqual(
+      readToolFile(item),
+    );
+  });
+
+  it("preserves an empty file and omits unloaded output", () => {
+    const item = { ...read, output: { type: "text", file: { filePath: "empty.ts", content: "" } } };
+    expect(readToolFile(item)).toEqual({ fileName: "empty.ts", contents: "", startLine: 1 });
+    expect(readToolFile({ ...item, outputOmitted: true })).toBeNull();
+  });
+
+  it("decodes legacy numbered text while preserving indentation and blank source lines", () => {
+    const item = {
+      ...read,
+      output: [
+        {
+          type: "text",
+          text: "    24→  const value = 1;\n    25→\n    26→  done();\n\n<system-reminder>\nReminder\n</system-reminder>",
+        },
+      ],
+    };
+    expect(readToolFile(item)).toEqual({
+      fileName: read.input.file_path,
+      contents: "  const value = 1;\n\n  done();",
+      startLine: 24,
+    });
+    expect(readToolFile({ ...read, output: "1\tfirst\n2\tsecond\n" })?.contents).toBe(
+      "first\nsecond",
+    );
+  });
+
+  it("does not mistake errors, other tools, or non-text reads for source", () => {
+    expect(readToolFile({ ...read, output: "File does not exist." })).toBeNull();
+    expect(readToolFile({ ...read, output: "1→first\n3→not consecutive" })).toBeNull();
+    expect(
+      readToolFile({ ...read, output: { type: "image", file: { filePath: "image.png" } } }),
+    ).toBeNull();
+    expect(
+      readToolFile({
+        ...screenshot,
+        output: { type: "text", file: { filePath: "file.ts", content: "source" } },
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("tool output images", () => {
   it("shows a screenshot as an image asset, not as text", () => {

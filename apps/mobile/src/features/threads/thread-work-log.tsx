@@ -68,6 +68,7 @@ import {
 } from "../../lib/threadActivity";
 import {
   toolCallLines,
+  readToolFile,
   turnItemOutputImages,
   turnItemOutputText,
 } from "@t3tools/client-runtime/work-log/item-detail";
@@ -959,6 +960,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const fetchedItem = fetchedDetail.data?.item ?? null;
   const isRead = toolGroupAction(row.workEntry) === "read";
   const shownItem = fetchedItem ?? row.projectedItem.item;
+  const readFile = expanded ? readToolFile(shownItem) : null;
   const diffStats =
     shownItem.type === "file_change" &&
     shownItem.status === "completed" &&
@@ -1264,7 +1266,22 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
                 {fullDetail}
               </Text>
             ) : null}
-            {fetchedOutput ? (
+            {readFile ? (
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                className="mt-1.5 rounded-md border border-border bg-card"
+              >
+                <Text selectable className="p-2 font-mono text-2xs leading-normal text-foreground">
+                  {readFile.contents === ""
+                    ? "Empty file."
+                    : readFile.contents
+                        .split("\n")
+                        .map((line, index) => `${readFile.startLine + index}  ${line}`)
+                        .join("\n")}
+                </Text>
+              </ScrollView>
+            ) : fetchedOutput ? (
               <Text
                 selectable
                 className={cn(

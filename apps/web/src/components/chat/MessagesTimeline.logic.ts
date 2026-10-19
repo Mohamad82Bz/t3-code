@@ -72,7 +72,7 @@ import {
   formatReadToolLabel,
   formatSearchToolLabel,
 } from "@t3tools/shared/toolActivity";
-import { isWindowsAbsolutePath } from "@t3tools/shared/path";
+import { fileBasename, isWindowsAbsolutePath } from "@t3tools/shared/path";
 
 function timelineEntryRunId(entry: TimelineEntry): RunId | null {
   if (entry.kind === "message") {
@@ -132,6 +132,9 @@ function workEntryReadPaths(entry: WorkLogEntry, workspaceRoot: string | undefin
 
 export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   if (entry.itemType === "system_notice") return entry.label;
+  if (entry.structuredPayload?.type === "file_change") {
+    return fileBasename(entry.structuredPayload.fileName);
+  }
   if (entry.itemType === "reasoning" || entry.tone === "thinking") {
     const thought = entry.detail?.trim().replace(/\s+/g, " ");
     return thought || entry.label;

@@ -5292,7 +5292,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const pendingHandoff = resolvePendingHandoff(
     serverProjection,
-    composerSelectedModelSelection ?? activeThread?.modelSelection,
+    composerSelectedModelSelection?.instanceId === activeProviderInstanceId
+      ? composerSelectedModelSelection
+      : activeThread?.modelSelection,
     providerStatuses,
   );
   const compactThreadUnavailable =

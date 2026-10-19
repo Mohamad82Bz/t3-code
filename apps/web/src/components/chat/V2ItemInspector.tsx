@@ -6,13 +6,14 @@ import type {
 } from "@t3tools/contracts";
 import {
   toolCallLines,
+  readToolFile,
   turnItemDetailRevision,
   turnItemNeedsDetailFetch,
   turnItemOutputImages,
   turnItemOutputText,
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
-import { isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
+import { collectToolFilePaths, isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
 import { memo, type ReactNode, Suspense, use } from "react";
 
@@ -31,6 +32,7 @@ import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ShellCommandBlock } from "./ShellCommandBlock";
 import { ToolCallDiff } from "./ToolCallDiff";
+import { ToolReadFile } from "./ToolReadFile";
 
 interface V2ItemInspectorProps {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
@@ -249,6 +251,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
   const fetched = useFetchedTurnItem(props.projectedItem, props.environmentId, streamsOutput);
   const item = fetched.item;
   const outputState = fetched.output;
+  const readFile = readToolFile(item);
   const support = useV2ItemSupport({
     environmentId: props.environmentId,
     sourceThreadId: props.projectedItem.sourceThreadId,
@@ -291,9 +294,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       {item.type === "file_change" ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-muted-foreground">
-              {formatWorkspaceRelativePath(item.fileName, props.workspaceRoot)}
-            </span>
+            <span className="font-mono text-muted-foreground">{item.fileName}</span>
             {item.additions !== undefined || item.deletions !== undefined ? (
               <span>
                 <span className="text-diff-addition">+{formatDiffCount(item.additions ?? 0)}</span>{" "}
@@ -392,12 +393,27 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
       ) : null}
 
       {item.type === "dynamic_tool" ? (
-        <ToolCallBody
-          toolName={item.toolName}
-          args={item.input}
-          {...outputState}
-          onImageExpand={props.onImageExpand}
-        />
+        item.toolName?.toLowerCase() === "read" ? (
+          <div className="space-y-2">
+            <div className="font-mono break-all text-muted-foreground">
+              {collectToolFilePaths({ input: item.input })[0]}
+            </div>
+            {readFile ? (
+              <ToolReadFile file={readFile} />
+            ) : (
+              <div className={monoClassName}>
+                <ToolOutput {...outputState} onImageExpand={props.onImageExpand} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <ToolCallBody
+            toolName={item.toolName}
+            args={item.input}
+            {...outputState}
+            onImageExpand={props.onImageExpand}
+          />
+        )
       ) : null}
 
       {item.type === "approval_request" ? <StructuredValue value={item.prompt} /> : null}

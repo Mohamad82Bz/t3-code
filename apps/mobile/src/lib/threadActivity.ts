@@ -62,6 +62,7 @@ import {
   formatReadToolLabel,
   formatSearchToolLabel,
 } from "@t3tools/shared/toolActivity";
+import { fileBasename } from "@t3tools/shared/path";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { truncate } from "@t3tools/shared/String";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
@@ -269,6 +270,9 @@ function compactWorkEntryText(value: string): string {
 }
 
 export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = false): string {
+  if (entry.structuredPayload?.type === "file_change") {
+    return fileBasename(entry.structuredPayload.fileName);
+  }
   if (expanded && entry.itemType === "reasoning")
     return entry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought";
   const presentation = resolveWorkEntryToolPresentation(entry);
@@ -1531,19 +1535,22 @@ function appendToolGroupRows(
         )?.workEntry.detail
       : undefined;
   const thought = latestThought ? liveThoughtLine(latestThought) : "";
-  const summary = live
-    ? (expanded || thought) && latestActivity.workEntry.itemType === "reasoning"
-      ? latestActivity.lifecycleStatus === "inProgress"
-        ? "Thinking"
-        : "Thought"
-      : liveToolActivitySummary(latestActivity, live)
-    : singleActivity !== null &&
-        singleActivity.toolLike &&
-        toolGroupAction(singleActivity.workEntry) !== "edit"
-      ? singleToolCallLabel(singleActivity, expanded)
-      : singleActivity !== null && !singleActivity.toolLike
-        ? singleActivity.workEntry.label
-        : groupSummary.summary;
+  const summary =
+    singleActivity?.workEntry.itemType === "file_change"
+      ? workEntryRowLabel(singleActivity.workEntry)
+      : live
+        ? (expanded || thought) && latestActivity.workEntry.itemType === "reasoning"
+          ? latestActivity.lifecycleStatus === "inProgress"
+            ? "Thinking"
+            : "Thought"
+          : liveToolActivitySummary(latestActivity, live)
+        : singleActivity !== null &&
+            singleActivity.toolLike &&
+            toolGroupAction(singleActivity.workEntry) !== "edit"
+          ? singleToolCallLabel(singleActivity, expanded)
+          : singleActivity !== null && !singleActivity.toolLike
+            ? singleActivity.workEntry.label
+            : groupSummary.summary;
   const id = shimmer ? LIVE_ACTIVITY_ROW_ID : `${live ? "work-live" : "work-toggle"}:${groupId}`;
   // A lone call needs no header. Its own row takes the header's place, label
   // and identity, and discloses its details directly. A lone thought keeps the
@@ -1629,6 +1636,7 @@ function appendToolGroupRows(
 }
 
 function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boolean): string {
+  if (activity.workEntry.itemType === "file_change") return workEntryRowLabel(activity.workEntry);
   const status = liveActivityToolStatus(activity.lifecycleStatus, presentTense);
   if (activity.workEntry.itemType === "reasoning") {
     return (

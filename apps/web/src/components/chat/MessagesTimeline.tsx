@@ -5424,7 +5424,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? claudeSkillInvocation(payload.toolName, payload.input)
       : undefined;
   const plainOutput =
-    toolGroupAction(workEntry) === "read"
+    toolGroupAction(workEntry) === "read" &&
+    !(payload?.type === "dynamic_tool" && payload.toolName?.toLowerCase() === "read")
       ? workEntryReadOutput(workEntry, workspaceRoot)
       : skill
         ? (skill.args ?? null)

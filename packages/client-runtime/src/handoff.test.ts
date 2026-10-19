@@ -110,6 +110,31 @@ describe("pending context handoff", () => {
       resolvePendingHandoff(projection, { instanceId: from, model: "other" }, providers)?.to.model,
     ).toBe("other");
   });
+  it("ignores a saved default for a disabled provider after a Claude-only turn", () => {
+    const claude = {
+      ...projection,
+      runs: [
+        {
+          ...projection.runs[0]!,
+          providerInstanceId: to,
+          modelSelection: { instanceId: to, model: "luna" },
+        },
+      ],
+    };
+    const providers = [
+      { instanceId: from, driver: "codex", enabled: false },
+      { instanceId: to, driver: "claudeAgent", enabled: true },
+    ] as unknown as ServerProvider[];
+    expect(
+      resolvePendingHandoff(claude, { instanceId: from, model: "luna" }, providers),
+    ).toBeNull();
+    expect(
+      resolvePendingHandoff(claude, { instanceId: from, model: "luna" }, [
+        { ...providers[0]!, enabled: true },
+        providers[1]!,
+      ]),
+    ).not.toBeNull();
+  });
   it("resumes compatible account overlays without showing a handoff", () => {
     const providers = [from, to].map((instanceId) => ({
       instanceId,
