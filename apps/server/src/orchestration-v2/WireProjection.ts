@@ -93,6 +93,24 @@ function summarizeDynamicValue(value: unknown): unknown {
   };
 }
 
+function recoverFileChangeCounts(item: Extract<OrchestrationV2TurnItem, { type: "file_change" }>) {
+  if (item.status !== "completed" || item.additions !== undefined || item.deletions !== undefined) {
+    return item;
+  }
+  const isCodex = item.nativeItemRef?.driver === "codex";
+  // Older Codex records can contain only the first file's patch.
+  if (isCodex && item.changes?.length !== 1) return item;
+  const change = item.changes?.[0];
+  const stats =
+    isCodex &&
+    item.diffStr !== undefined &&
+    change !== undefined &&
+    (change.operation === "add" || change.operation === "delete")
+      ? codexFileChangeStats([{ kind: { type: change.operation }, diff: item.diffStr }])
+      : fileChangeStats(item.diffStr);
+  return stats === undefined ? item : { ...item, ...stats };
+}
+
 export function projectTurnItemForWire(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {
     case "handoff": {
@@ -113,23 +131,7 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
       };
     }
     case "file_change": {
-      const { diffStr, oldStr: _old, newStr: _new, ...projected } = item;
-      // Older provider records contain patch text without precomputed counts.
-      if (
-        item.status === "completed" &&
-        item.additions === undefined &&
-        item.deletions === undefined
-      ) {
-        const change = item.changes?.length === 1 ? item.changes[0] : undefined;
-        const stats =
-          item.nativeItemRef?.driver === "codex" &&
-          diffStr !== undefined &&
-          change !== undefined &&
-          (change.operation === "add" || change.operation === "delete")
-            ? codexFileChangeStats([{ kind: { type: change.operation }, diff: diffStr }])
-            : fileChangeStats(diffStr);
-        return { ...projected, ...stats };
-      }
+      const { diffStr, oldStr: _old, newStr: _new, ...projected } = recoverFileChangeCounts(item);
       return item.status === "failed" && diffStr?.trim()
         ? { ...projected, diffStr: truncateDetail(diffStr) }
         : projected;
@@ -217,7 +219,7 @@ export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): Orchest
           item.result === null ? null : (truncateDetail(item.result, MAX_ON_DEMAND_BYTES) ?? null),
       };
     case "file_change":
-      return boundFileChangeForStorage(item);
+      return boundFileChangeForStorage(recoverFileChangeCounts(item));
     case "handoff":
       return projectTurnItemForWire(item);
     default:

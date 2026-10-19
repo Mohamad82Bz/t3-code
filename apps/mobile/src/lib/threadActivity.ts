@@ -877,7 +877,7 @@ function singleToolCallLabel(activity: ThreadFeedActivity, expanded: boolean): s
       : compactWorkEntryText(activity.workEntry.detail ?? "") || "Thought";
   const presentation = resolveWorkEntryToolPresentation(activity.workEntry, "completed");
   if (presentation) return presentation.displayName;
-  const command = activity.workEntry.command?.trim();
+  const command = commandDescription(activity.workEntry) ?? activity.workEntry.command?.trim();
   return command ? truncate(command, WORK_LOG_LABEL_MAX_LENGTH) : activity.summary;
 }
 

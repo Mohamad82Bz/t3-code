@@ -24,6 +24,7 @@ export function fileChangeStats(patch: string | undefined) {
   let oldRemaining = 0;
   let newRemaining = 0;
   let sawHunk = false;
+  let currentFileHasHunk = false;
 
   for (const line of patch.split(/\r?\n/)) {
     const hunk = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
@@ -35,12 +36,21 @@ export function fileChangeStats(patch: string | undefined) {
         return undefined;
       }
       sawHunk = true;
+      currentFileHasHunk = true;
       continue;
     }
     if (line.startsWith("Binary files ") || line === "GIT binary patch" || line.startsWith("@@@")) {
       return undefined;
     }
     if (oldRemaining === 0 && newRemaining === 0) {
+      if (
+        line.startsWith("diff --git ") ||
+        line.startsWith("Index: ") ||
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ")
+      ) {
+        currentFileHasHunk = false;
+      }
       if (
         line === "" ||
         line === "\\ No newline at end of file" ||
@@ -70,5 +80,7 @@ export function fileChangeStats(patch: string | undefined) {
     if (oldRemaining < 0 || newRemaining < 0) return undefined;
   }
 
-  return sawHunk && oldRemaining === 0 && newRemaining === 0 ? { additions, deletions } : undefined;
+  return sawHunk && currentFileHasHunk && oldRemaining === 0 && newRemaining === 0
+    ? { additions, deletions }
+    : undefined;
 }

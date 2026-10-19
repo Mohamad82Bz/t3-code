@@ -1457,6 +1457,28 @@ describe("buildThreadFeed", () => {
       return row.activities[0]?.groupStandIn;
     };
 
+    it.each([
+      { driver: "claudeAgent", label: "Check repository status" },
+      { driver: "codex", label: "vp check" },
+    ])("uses the completed $driver command label in its stand-in row", ({ driver, label }) => {
+      const item = {
+        ...command(),
+        title: "Check repository status",
+        nativeItemRef: {
+          driver: ProviderDriverKind.make(driver),
+          nativeId: "bash-singleton",
+          strength: "strong" as const,
+        },
+      };
+      const feed = buildThreadFeed([projected(item, 0)]);
+      const rows = deriveThreadFeedPresentation(feed, null, new Set([runId]));
+      expect(standIn(rows)?.label).toBe(label);
+      const activity = rows.flatMap((row) =>
+        row.type === "activity-group" ? row.activities : [],
+      )[0];
+      expect(activity?.workEntry.command).toBe(item.input);
+    });
+
     it("is its own row, with no group header to open first", () => {
       // The second call never finished, so only one call is visible.
       for (const items of [[wait()], [wait(), read(running)]]) {

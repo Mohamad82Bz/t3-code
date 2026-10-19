@@ -374,52 +374,114 @@ describe("orchestration V2 wire projection", () => {
     expect(failed).not.toHaveProperty("newStr");
   });
 
-  it("recovers legacy file change counts without sending patches or changing stored items", () => {
-    const item = {
-      ...base,
-      type: "file_change" as const,
-      fileName: "demo.txt",
-      diffStr: "--- demo.txt\n+++ demo.txt\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n",
-    };
-    const projected = projectTurnItemForWire(item);
-    expect(projected).toMatchObject({ additions: 2, deletions: 1 });
-    expect(projected).not.toHaveProperty("diffStr");
-    expect(item).not.toHaveProperty("additions");
-    expect(projectTurnItemForWire(projected)).toEqual(projected);
-    expect(
-      projectTurnItemForWire({ ...item, diffStr: "@@ -1 +1,2 @@\n-old\n+new" }),
-    ).not.toHaveProperty("additions");
-    expect(projectTurnItemForWire({ ...item, status: "failed" })).not.toHaveProperty("additions");
-  });
+  it.each(["wire", "detail"] as const)(
+    "recovers legacy file change counts in the %s projection without changing stored items",
+    (projection) => {
+      const project = projection === "wire" ? projectTurnItemForWire : projectTurnItemForDetail;
+      const item = {
+        ...base,
+        type: "file_change" as const,
+        fileName: "demo.txt",
+        diffStr: "--- demo.txt\n+++ demo.txt\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n",
+      };
+      const projected = project(item);
+      expect(projected).toMatchObject({ additions: 2, deletions: 1 });
+      if (projection === "wire") expect(projected).not.toHaveProperty("diffStr");
+      else expect(projected).toMatchObject({ diffStr: item.diffStr });
+      expect(item).not.toHaveProperty("additions");
+      expect(project(projected)).toEqual(projected);
+      expect(project({ ...item, diffStr: "@@ -1 +1,2 @@\n-old\n+new" })).not.toHaveProperty(
+        "additions",
+      );
+      expect(project({ ...item, status: "failed" })).not.toHaveProperty("additions");
+      expect(project({ ...item, status: "running" })).not.toHaveProperty("additions");
+      expect(project({ ...item, additions: 10, deletions: 5 })).toMatchObject({
+        additions: 10,
+        deletions: 5,
+      });
+    },
+  );
 
-  it("recovers whole-file Codex creation counts without guessing for other providers", () => {
+  it.each(["wire", "detail"] as const)(
+    "does not recover partial legacy Codex counts in the %s projection",
+    (projection) => {
+      const project = projection === "wire" ? projectTurnItemForWire : projectTurnItemForDetail;
+      const item = {
+        ...base,
+        type: "file_change" as const,
+        fileName: "demo.txt",
+        nativeItemRef: {
+          driver: ProviderDriverKind.make("codex"),
+          nativeId: "legacy-edit",
+          strength: "strong" as const,
+        },
+        diffStr: "@@ -1 +1,2 @@\n-old\n+new\n+extra\n",
+      };
+      const update = { operation: "update" as const, path: "demo.txt" };
+      expect(project(item)).not.toHaveProperty("additions");
+      expect(project({ ...item, changes: [] })).not.toHaveProperty("additions");
+      expect(
+        project({ ...item, changes: [update, { ...update, path: "other.txt" }] }),
+      ).not.toHaveProperty("additions");
+      expect(project({ ...item, changes: [update] })).toMatchObject({ additions: 2, deletions: 1 });
+      expect(project({ ...item, additions: 20, deletions: 10 })).toMatchObject({
+        additions: 20,
+        deletions: 10,
+      });
+    },
+  );
+
+  it.each([
+    { projection: "wire", operation: "add", additions: 2, deletions: 0 },
+    { projection: "detail", operation: "add", additions: 2, deletions: 0 },
+    { projection: "wire", operation: "delete", additions: 0, deletions: 2 },
+    { projection: "detail", operation: "delete", additions: 0, deletions: 2 },
+  ] as const)(
+    "recovers whole-file Codex $operation counts in the $projection projection",
+    ({ projection, operation, additions, deletions }) => {
+      const project = projection === "wire" ? projectTurnItemForWire : projectTurnItemForDetail;
+      const item = {
+        ...base,
+        type: "file_change" as const,
+        fileName: "demo.txt",
+        nativeItemRef: {
+          driver: ProviderDriverKind.make("codex"),
+          nativeId: "create-file",
+          strength: "strong" as const,
+        },
+        changes: [{ operation, path: "demo.txt" }],
+        diffStr: "one\ntwo\n",
+      };
+      const projected = project(item);
+      expect(projected).toMatchObject({ additions, deletions });
+      if (projection === "wire") expect(projected).not.toHaveProperty("diffStr");
+      else expect(projected).toMatchObject({ diffStr: item.diffStr });
+      expect(project(projected)).toEqual(projected);
+      expect(item).not.toHaveProperty("additions");
+      expect(project({ ...item, nativeItemRef: null })).not.toHaveProperty("additions");
+      expect(project({ ...item, status: "failed" })).not.toHaveProperty("additions");
+      expect(
+        project({
+          ...item,
+          changes: [...item.changes, { operation, path: "other.txt" }],
+        }),
+      ).not.toHaveProperty("additions");
+    },
+  );
+
+  it("recovers detail counts before bounding the legacy patch", () => {
     const item = {
       ...base,
       type: "file_change" as const,
-      fileName: "demo.txt",
-      nativeItemRef: {
-        driver: ProviderDriverKind.make("codex"),
-        nativeId: "create-file",
-        strength: "strong" as const,
-      },
-      changes: [{ operation: "add" as const, path: "demo.txt" }],
-      diffStr: "one\ntwo\n",
+      fileName: "large.txt",
+      diffStr: `@@ -0,0 +1,1000 @@\n${`+${"x".repeat(40)}\n`.repeat(1000)}`,
     };
-    const projected = projectTurnItemForWire(item);
-    expect(projected).toMatchObject({ additions: 2, deletions: 0 });
-    expect(projected).not.toHaveProperty("diffStr");
-    expect(projectTurnItemForWire(projected)).toEqual(projected);
-    expect(item).not.toHaveProperty("additions");
-    expect(projectTurnItemForWire({ ...item, nativeItemRef: null })).not.toHaveProperty(
-      "additions",
+    const detail = projectTurnItemForDetail(item);
+    expect(detail).toMatchObject({ additions: 1000, deletions: 0 });
+    expect(detail.type === "file_change" && detail.diffStr).toContain(
+      "output truncated for transport",
     );
-    expect(projectTurnItemForWire({ ...item, status: "failed" })).not.toHaveProperty("additions");
-    expect(
-      projectTurnItemForWire({
-        ...item,
-        changes: [...item.changes, { operation: "add", path: "other.txt" }],
-      }),
-    ).not.toHaveProperty("additions");
+    expect(item).not.toHaveProperty("additions");
   });
 
   it("retains only result identities and failure metadata in live tool events", () => {

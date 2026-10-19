@@ -24,6 +24,20 @@ describe("fileChangeStats", () => {
   });
 
   it.each([
+    "diff --git a/next.txt b/next.txt\nindex 1234567..abcdef0 100644\n",
+    "--- a/next.txt\n+++ b/next.txt\n",
+    "diff --git a/next.txt b/next.txt\n--- a/next.txt\n+++ b/next.txt\n",
+  ])("rejects a header-only file section after a complete hunk: %s", (headers) => {
+    const complete =
+      "diff --git a/demo.txt b/demo.txt\n--- a/demo.txt\n+++ b/demo.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    expect(fileChangeStats(complete + headers)).toBeUndefined();
+    expect(fileChangeStats(complete + headers + "@@ -0,0 +1 @@\n+next\n")).toEqual({
+      additions: 2,
+      deletions: 1,
+    });
+  });
+
+  it.each([
     undefined,
     "Success. Updated file.",
     "--- a\n+++ a\n",
