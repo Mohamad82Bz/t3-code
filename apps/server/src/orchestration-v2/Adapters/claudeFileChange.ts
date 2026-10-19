@@ -1,9 +1,16 @@
 import { fileChangeStats } from "@t3tools/shared/fileChangeStats";
 import { field } from "../unknownField.ts";
 
-export function claudeFileChangeStats(output: unknown) {
+export function claudeFileChangeDiff(output: unknown): string | undefined {
+  if (typeof output === "string") {
+    if (!output.trimStart().startsWith("{")) return output;
+    try {
+      return claudeFileChangeDiff(JSON.parse(output));
+    } catch {
+      return output;
+    }
+  }
   if (field(output, "staged") === true) return undefined;
-  if (typeof output === "string") return fileChangeStats(output);
 
   const hunks = field(output, "structuredPatch");
   if (Array.isArray(hunks) && hunks.length > 0) {
@@ -26,16 +33,24 @@ export function claudeFileChangeStats(output: unknown) {
         `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@\n${lines.join("\n")}\n`,
       );
     }
-    return fileChangeStats(patches.join("\n"));
+    return patches.join("\n");
   }
 
   // An update with no patch may be a diff timeout, not a zero-line edit.
   const content = field(output, "content");
   if (field(output, "type") === "create" && typeof content === "string") {
-    return {
-      additions: content === "" ? 0 : content.split("\n").length - (content.endsWith("\n") ? 1 : 0),
-      deletions: 0,
-    };
+    const lines = content === "" ? [] : content.split("\n");
+    if (content.endsWith("\n")) lines.pop();
+    return [
+      `@@ -0,0 +${lines.length > 0 ? 1 : 0},${lines.length} @@`,
+      ...lines.map((line) => `+${line}`),
+      ...(content && !content.endsWith("\n") ? ["\\ No newline at end of file"] : []),
+      "",
+    ].join("\n");
   }
   return undefined;
+}
+
+export function claudeFileChangeStats(output: unknown) {
+  return fileChangeStats(claudeFileChangeDiff(output));
 }

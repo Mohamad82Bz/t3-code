@@ -58,6 +58,29 @@ describe("tool-call diffs", () => {
     expect(edited.files[0]?.hunks[0]).toMatchObject({ additionStart: 56, deletionStart: 56 });
   });
 
+  it("explains legacy Claude diffs truncated before their structured patch was saved", () => {
+    const truncated =
+      JSON.stringify({
+        filePath: "large.ts",
+        oldString: "old",
+        newString: "new",
+        originalFile: "x".repeat(40_000),
+      }).slice(0, 32_768) + "\n… output truncated for transport";
+    const diff = toolCallDiff({
+      ...item,
+      nativeItemRef: {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        nativeId: "truncated",
+        strength: "strong",
+      },
+      diffStr: truncated,
+    });
+    expect(diff).toMatchObject({
+      kind: "unavailable",
+      reason: expect.stringContaining("truncated before it was saved"),
+    });
+  });
+
   it("renders both full patches and headerless edit hunks", () => {
     for (const prefix of ["", "--- demo.txt\n+++ demo.txt\n"]) {
       const diff = toolCallDiff({
@@ -88,6 +111,16 @@ describe("tool-call diffs", () => {
         deletions: operation === "delete" ? 3 : 0,
       });
     }
+  });
+
+  it.each([
+    ["@@ -0,0 +1,1 @@\n+created\n", 1],
+    ["@@ -0,0 +0,0 @@\n", 0],
+  ] as const)("renders normalized Claude file creation patches: %s", (diffStr, additions) => {
+    const diff = toolCallDiff({ ...item, diffStr });
+    expect(diff?.kind).toBe("files");
+    if (diff?.kind !== "files") throw new Error("Expected created file diff");
+    expect(getDiffLineStat(diff.files)).toEqual({ additions, deletions: 0 });
   });
 
   it("supports before/after text, including an empty new file", () => {

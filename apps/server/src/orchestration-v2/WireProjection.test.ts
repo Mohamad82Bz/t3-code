@@ -18,6 +18,7 @@ import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
 import {
+  boundFileChangeForStorage,
   projectTurnItemForWire,
   projectTurnItemForDetail,
   projectDomainEventForWire,
@@ -468,6 +469,41 @@ describe("orchestration V2 wire projection", () => {
       ).not.toHaveProperty("additions");
     },
   );
+
+  it("keeps Claude's small edit patch when the original file exceeds the storage budget", () => {
+    const item = {
+      ...base,
+      type: "file_change" as const,
+      fileName: "large.ts",
+      nativeItemRef: {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        nativeId: "large-edit",
+        strength: "strong" as const,
+      },
+      diffStr: JSON.stringify({
+        filePath: "large.ts",
+        oldString: "old",
+        newString: "new",
+        originalFile: "context\n".repeat(10_000),
+        structuredPatch: [
+          { oldStart: 1640, oldLines: 1, newStart: 1640, newLines: 1, lines: ["-old", "+new"] },
+        ],
+      }),
+    };
+    const stored = boundFileChangeForStorage(item);
+    expect(stored).toMatchObject({ diffStr: "@@ -1640,1 +1640,1 @@\n-old\n+new\n" });
+    expect(boundFileChangeForStorage(stored)).toBe(stored);
+    expect(projectTurnItemForDetail(item)).toMatchObject({
+      additions: 1,
+      deletions: 1,
+      diffStr: "@@ -1640,1 +1640,1 @@\n-old\n+new\n",
+    });
+    expect(projectTurnItemForWire(item)).toMatchObject({ additions: 1, deletions: 1 });
+    expect(item.diffStr.length).toBeGreaterThan(32_768);
+    expect(boundFileChangeForStorage({ ...item, status: "failed" })).toMatchObject({
+      status: "failed",
+    });
+  });
 
   it("recovers detail counts before bounding the legacy patch", () => {
     const item = {

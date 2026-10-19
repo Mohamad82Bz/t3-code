@@ -31,6 +31,13 @@ export function toolCallDiff(item: FileChange) {
   let patch = item.diffStr;
   if (item.nativeItemRef?.driver === "claudeAgent" && patch?.trimStart().startsWith("{")) {
     const decoded = decodeClaudeDiff(patch);
+    if (Option.isNone(decoded) && patch.trimEnd().endsWith("… output truncated for transport")) {
+      return {
+        kind: "unavailable" as const,
+        reason:
+          "This tool-call diff was truncated before it was saved. Open the turn diff to inspect the file changes.",
+      };
+    }
     if (Option.isSome(decoded)) {
       const output = decoded.value;
       if (output.type === "create" && output.content !== undefined) {

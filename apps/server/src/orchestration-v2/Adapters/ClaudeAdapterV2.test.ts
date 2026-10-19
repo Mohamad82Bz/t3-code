@@ -2691,6 +2691,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         {
           name: "Edit",
           output: {
+            filePath: "/repo/demo.txt",
+            oldString: "old",
+            newString: "new\nextra",
+            originalFile: "large original file context\n".repeat(10_000),
             structuredPatch: [
               {
                 oldStart: 1,
@@ -2792,6 +2796,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             { additions: event.turnItem.additions, deletions: event.turnItem.deletions },
             scenario.expected,
           );
+          if (scenario.name === "Edit") {
+            assert.equal(event.turnItem.diffStr, "@@ -1,1 +1,2 @@\n-old\n+new\n+extra\n");
+          }
         }
       }
     }).pipe(

@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/toolOutput";
 import { fileChangeStats } from "@t3tools/shared/fileChangeStats";
 import { codexFileChangeStats } from "./Adapters/codexFileChange.ts";
+import { claudeFileChangeDiff, claudeFileChangeStats } from "./Adapters/claudeFileChange.ts";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
@@ -44,9 +45,14 @@ function truncateDetail(
 export function boundFileChangeForStorage(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   if (item.type !== "file_change") return item;
   const { diffStr, oldStr, newStr } = item;
+  // Legacy Claude results put the entire original file before the actual edit hunks.
+  const patch =
+    item.nativeItemRef?.driver === "claudeAgent" && item.status === "completed"
+      ? (claudeFileChangeDiff(diffStr) ?? diffStr)
+      : diffStr;
   const bounded = {
     ...item,
-    ...(diffStr === undefined ? {} : { diffStr: truncateDetail(diffStr) }),
+    ...(patch === undefined ? {} : { diffStr: truncateDetail(patch) }),
     ...(oldStr === undefined ? {} : { oldStr: truncateDetail(oldStr) }),
     ...(newStr === undefined ? {} : { newStr: truncateDetail(newStr) }),
   };
@@ -107,7 +113,9 @@ function recoverFileChangeCounts(item: Extract<OrchestrationV2TurnItem, { type: 
     change !== undefined &&
     (change.operation === "add" || change.operation === "delete")
       ? codexFileChangeStats([{ kind: { type: change.operation }, diff: item.diffStr }])
-      : fileChangeStats(item.diffStr);
+      : item.nativeItemRef?.driver === "claudeAgent"
+        ? claudeFileChangeStats(item.diffStr)
+        : fileChangeStats(item.diffStr);
   return stats === undefined ? item : { ...item, ...stats };
 }
 

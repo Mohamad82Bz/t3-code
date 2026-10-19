@@ -18,6 +18,7 @@ export function ToolCallDiff({
   const { resolvedTheme } = useTheme();
   const patch = toolCallDiff(item);
   if (!patch) return <p className="text-muted-foreground">No diff available for this tool call.</p>;
+  if (patch.kind === "unavailable") return <p className="text-muted-foreground">{patch.reason}</p>;
   const raw = (
     <pre className="p-2 font-mono text-xs whitespace-pre">
       {patch.kind === "raw" ? patch.text : (item.diffStr ?? item.newStr ?? item.oldStr)}
