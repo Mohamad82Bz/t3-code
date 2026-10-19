@@ -18,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/work-log/command-label";
 import {
   contextCompactionLabel,
+  commandDescription,
   liveThoughtLine,
   toolItemForDisplay,
   workEntryDisplayIndicatesToolFailure,
@@ -272,7 +273,8 @@ export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = fa
     return entry.toolLifecycleStatus === "inProgress" ? "Thinking" : "Thought";
   const presentation = resolveWorkEntryToolPresentation(entry);
   if (presentation) return presentation.displayName;
-  if (entry.command?.trim()) return compactWorkEntryText(commandDisplayText(entry.command));
+  if (entry.command?.trim())
+    return compactWorkEntryText(commandDescription(entry) ?? commandDisplayText(entry.command));
   const action = toolGroupAction(entry);
   const isToolRead = action === "read" && entry.itemType === "dynamic_tool";
   if (action === "code-search" || action === "search") {
@@ -1641,6 +1643,8 @@ function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boo
   if (presentation) return presentation.displayName;
   const command = activity.workEntry.command?.trim();
   if (command) {
+    const description = commandDescription(activity.workEntry);
+    if (description) return compactWorkEntryText(description);
     const program = commandProgramName(command);
     const verb =
       status === "inProgress"

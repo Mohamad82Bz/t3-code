@@ -4336,6 +4336,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ? firstStringInputField(input.toolInput, ["file_path", "path"])?.trim()
             : undefined;
           const nativeToolInput = claudeNativeToolInputValue(input.toolInput);
+          const commandTitle =
+            input.classification.normalizedName === "bash"
+              ? firstStringInputField(input.toolInput, ["description"])?.trim() || undefined
+              : undefined;
           const searchTitle = ["grep", "glob", "ls"].includes(input.classification.normalizedName)
             ? formatSearchToolLabel({
                 input:
@@ -4364,7 +4368,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             title:
               readPath !== undefined
                 ? formatReadToolLabel(readPath)
-                : (searchTitle ??
+                : (commandTitle ??
+                  searchTitle ??
                   dynamicToolTitle(input.toolName, nativeToolInput) ??
                   input.presentation?.title ??
                   null),

@@ -15,6 +15,7 @@ import {
 } from "@t3tools/client-runtime/work-log/command-label";
 import {
   liveActivityToolStatus,
+  commandDescription,
   normalizeCompactToolLabel,
   resolveWorkEntryToolPresentation,
   summarizeToolGroup,
@@ -137,7 +138,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   }
   const toolPresentation = resolveWorkEntryToolPresentation(entry);
   if (toolPresentation) return toolPresentation.displayName;
-  if (entry.command?.trim()) return commandDisplayText(entry.command);
+  if (entry.command?.trim()) return commandDescription(entry) ?? commandDisplayText(entry.command);
   const action = toolGroupAction(entry);
   if (action === "code-search" || action === "search") {
     const searchLabel =
@@ -248,6 +249,8 @@ export function liveWorkEntryLabel(
   if (toolPresentation) return toolPresentation.displayName;
   const command = entry.command?.trim();
   if (command) {
+    const description = commandDescription(entry);
+    if (description) return description;
     const verb =
       status === "inProgress"
         ? "Running"

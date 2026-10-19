@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ThreadId,
+  TurnItemId,
+  type OrchestrationV2TurnItem,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { T3_MCP_TOOL_NAMES } from "@t3tools/shared/t3McpToolPresentation";
 
 import {
   commandDetailRepeatsCommand,
+  commandDescription,
   extractCommandOutputText,
   liveThoughtLine,
   resolveViewedImageAsset,
@@ -46,6 +52,28 @@ function commandItem(
     ...fields,
   };
 }
+
+describe("commandDescription", () => {
+  it.each([
+    ["claudeAgent", "  Check repository status  ", "Check repository status"],
+    ["claudeAgent", "   ", undefined],
+    ["claudeAgent", null, undefined],
+    ["codex", "Command", undefined],
+  ] as const)("resolves %s command title %j", (driver, title, expected) => {
+    expect(
+      commandDescription({
+        structuredPayload: commandItem({
+          nativeItemRef: {
+            driver: ProviderDriverKind.make(driver),
+            nativeId: "bash-1",
+            strength: "strong",
+          },
+          title,
+        }),
+      }),
+    ).toBe(expected);
+  });
+});
 
 describe("workEntryIndicatesToolFailure", () => {
   const base = {

@@ -395,6 +395,37 @@ describe("work entry labels", () => {
     expect(workEntryDisplayLabel(commandEntry, undefined)).toBe("vp test run");
   });
 
+  it("uses native Claude command descriptions in live and expanded rows", () => {
+    const fixture = makeStreamingTimelineFixture();
+    const item: OrchestrationV2TurnItem = {
+      id: TurnItemId.make("bash-1"),
+      threadId: fixture.threadId,
+      runId: fixture.runId,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: "completed",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: DateTime.makeUnsafe("2026-09-01T12:00:00Z"),
+      type: "command_execution",
+      input: "git status",
+      title: "Check repository status",
+      nativeItemRef: {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        nativeId: "bash-1",
+        strength: "strong",
+      },
+    };
+    const commandEntry = { ...entry, command: item.input, structuredPayload: item };
+    expect(liveWorkEntryLabel(commandEntry, undefined, true)).toBe("Check repository status");
+    expect(liveWorkEntryLabel(commandEntry, undefined, false)).toBe("Check repository status");
+    expect(workEntryDisplayLabel(commandEntry, undefined)).toBe("Check repository status");
+    expect(commandEntry.command).toBe("git status");
+  });
+
   it("summarizes the program inside a shell wrapper while preserving the expanded command", () => {
     const command = "/bin/zsh -lc 'vp test run apps/web/src/session-logic.test.ts'";
     const commandEntry = { ...entry, command };
