@@ -124,12 +124,6 @@ function workEntryReadRawPaths(entry: WorkLogEntry): readonly string[] {
   return collectToolFilePaths(workEntryToolDataRecord(entry));
 }
 
-function workEntryReadPaths(entry: WorkLogEntry, workspaceRoot: string | undefined): string[] {
-  return workEntryReadRawPaths(entry).map((filePath) =>
-    formatWorkspaceRelativePath(filePath, workspaceRoot),
-  );
-}
-
 export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string | undefined) {
   if (entry.itemType === "system_notice") return entry.label;
   if (entry.structuredPayload?.type === "file_change") {
@@ -150,7 +144,7 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
         : formatSearchToolLabel(workEntryToolDataRecord(entry));
     if (searchLabel) return searchLabel;
   }
-  const readPaths = action === "read" ? workEntryReadPaths(entry, workspaceRoot) : [];
+  const readPaths = action === "read" ? workEntryReadRawPaths(entry) : [];
   if (action === "read" && readPaths[0]) {
     return formatReadToolLabel(readPaths[0], readPaths.length - 1);
   }

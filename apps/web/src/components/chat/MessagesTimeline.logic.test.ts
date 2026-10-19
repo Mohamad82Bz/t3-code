@@ -332,7 +332,8 @@ describe("work entry labels", () => {
         input: { file_path: "src/env.ts" },
       } as NonNullable<WorkLogEntry["structuredPayload"]>,
     };
-    expect(workEntryDisplayLabel(readEntry, undefined)).toBe("Read src/env.ts");
+    expect(workEntryDisplayLabel(readEntry, undefined)).toBe("Read env.ts");
+    expect(workEntryDisplayLabel(readEntry, "/different/worktree")).toBe("Read env.ts");
     expect(workEntryReadOutput(readEntry, undefined)).toBe("src/env.ts");
     expect(workEntryReadOutput(readEntry, "/workspace/ohseearr")).toBe(
       "/workspace/ohseearr/src/env.ts",

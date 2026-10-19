@@ -853,7 +853,7 @@ describe("CursorAdapterV2", () => {
       );
       assert.deepEqual(
         readItems.map((item) => ({ title: item.title, input: item.input })),
-        [{ title: "Read src/env.ts", input: { path: "src/env.ts" } }],
+        [{ title: "Read env.ts", input: { path: "src/env.ts" } }],
       );
       assert.deepEqual(
         fileSearchItems.map((item) => ({

@@ -43,7 +43,7 @@ describe("toolActivity", () => {
         fallbackSummary: "Read File",
       }),
     ).toEqual({
-      summary: "Read /tmp/app.ts",
+      summary: "Read app.ts",
     });
   });
 
@@ -83,9 +83,18 @@ describe("toolActivity", () => {
     );
   });
 
+  it.each([
+    ["C:/workspace/node_modules/@pierre/diffs/dist/types.d.ts", "types.d.ts"],
+    ["C:\\workspace\\node_modules\\@pierre\\diffs\\dist\\types.d.ts", "types.d.ts"],
+    ["/workspace/src/example.test.ts", "example.test.ts"],
+    ["  .env.local  ", ".env.local"],
+  ])("keeps read titles to the basename: %s", (path, name) => {
+    expect(formatReadToolLabel(path)).toBe(`Read ${name}`);
+  });
+
   it("formats read and search labels from structured input", () => {
-    expect(formatReadToolLabel("src/env.ts")).toBe("Read src/env.ts");
-    expect(formatReadToolLabel("src/env.ts", 2)).toBe("Read src/env.ts +2 more");
+    expect(formatReadToolLabel("src/env.ts")).toBe("Read env.ts");
+    expect(formatReadToolLabel("src/env.ts", 2)).toBe("Read env.ts +2 more");
     expect(formatReadToolLabel("")).toBe("Read file");
     expect(
       formatSearchToolLabel({

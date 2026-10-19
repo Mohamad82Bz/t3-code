@@ -2619,6 +2619,27 @@ it("uses native Claude command descriptions for work-log rows", () => {
   expect(entry.command).toBe(item.input);
 });
 
+it.each([
+  "C:/workspace/node_modules/types.d.ts",
+  "C:\\workspace\\node_modules\\types.d.ts",
+  "/workspace/node_modules/types.d.ts",
+])("shortens Read titles without losing the expanded path: %s", (filePath) => {
+  const item: OrchestrationV2TurnItem = {
+    ...base("short-read", "2026-10-20T00:00:00.000Z", 1),
+    type: "dynamic_tool",
+    toolName: "Read",
+    title: `Read ${filePath}`,
+    input: { file_path: filePath },
+    outputOmitted: true,
+  };
+  const [activity] = buildThreadFeed([projected(item, 0)]).flatMap((entry) =>
+    entry.type === "activity-group" ? entry.activities : [],
+  );
+  expect(workEntryRowLabel(activity!.workEntry)).toBe("Read types.d.ts");
+  expect(workEntryRowLabel(activity!.workEntry, true)).toBe("Read types.d.ts");
+  expect(activity!.getFullDetail()).toBe(filePath);
+});
+
 it("caps one-line work-log labels for multi-kilobyte commands", () => {
   const command = `cd /repo && python3 - <<'PY'\n${"print('x')\n".repeat(400)}PY`;
   const entry = {

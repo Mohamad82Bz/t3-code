@@ -5041,10 +5041,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       assert.equal(image?.type, "dynamic_tool");
       if (image?.type === "dynamic_tool")
         assert.equal(image.viewedImagePath, "/workspace/reference.png");
-      assert.equal(image?.title, "Read /workspace/reference.png");
+      assert.equal(image?.title, "Read reference.png");
       assert.equal(
         items.find((item) => item.nativeItemRef?.nativeId === "text")?.title,
-        "Read /workspace/README.md",
+        "Read README.md",
       );
       assert.equal(
         items.find((item) => item.nativeItemRef?.nativeId === "search")?.title,

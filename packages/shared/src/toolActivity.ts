@@ -1,4 +1,5 @@
 import type { ToolLifecycleItemType } from "@t3tools/contracts";
+import { fileBasename } from "./path.ts";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -392,7 +393,7 @@ export function formatReadToolLabel(path: string, extraCount = 0): string {
   if (!trimmed) {
     return `Read file${suffix}`;
   }
-  return `Read ${trimmed}${suffix}`;
+  return `Read ${fileBasename(trimmed)}${suffix}`;
 }
 
 export interface ToolActivityPresentationInput {

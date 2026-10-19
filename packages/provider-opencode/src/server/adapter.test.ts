@@ -970,7 +970,7 @@ describe("OpenCodeAdapterV2", () => {
         event.type === "turn_item.updated" ? [event.turnItem] : [],
       );
       const read = items.find((item) => item.type === "dynamic_tool");
-      assert.equal(read?.title, "Read src/env.ts");
+      assert.equal(read?.title, "Read env.ts");
       const grep = items.find((item) => item.type === "file_search");
       assert.equal(grep?.title, "Searched TODO in web");
       assert.equal(grep?.type === "file_search" ? grep.pattern : null, "TODO");
