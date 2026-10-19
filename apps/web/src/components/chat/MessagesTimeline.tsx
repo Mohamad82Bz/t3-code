@@ -3961,6 +3961,7 @@ function WorkGroupToggleTimelineRow({
       iconName={row.summaryToolIcon ?? row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
       toolIcon={row.toolIcon}
       failed={row.hasFailure}
+      diffStats={row.diffStats}
       expanded={row.expanded}
       createdAt={row.createdAt}
       timestampFormat={ctx.timestampFormat}
@@ -3974,16 +3975,26 @@ function WorkGroupHeader(props: {
   iconName: WorkEntryIconName;
   toolIcon?: ToolActivityIcon | undefined;
   failed?: boolean | undefined;
+  diffStats?: { additions: number; deletions: number } | undefined;
   active?: boolean | undefined;
   expanded: boolean;
   createdAt: string;
   timestampFormat: TimestampFormat;
   onToggle: () => void;
 }) {
+  const accessibleLabel = [
+    props.label,
+    props.diffStats
+      ? `${props.diffStats.additions} additions, ${props.diffStats.deletions} deletions`
+      : null,
+    props.failed ? "tool call failed" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   return (
     <WorkLogButton
       ref={props.active && !props.failed ? observeVisibleAnimation : undefined}
-      aria-label={props.failed ? `${props.label}, tool call failed` : props.label}
+      aria-label={accessibleLabel}
       aria-expanded={props.expanded}
       onClick={props.onToggle}
       icon={
@@ -4000,7 +4011,20 @@ function WorkGroupHeader(props: {
         </span>
       }
       trailing={
-        <TimelineRowTimestamp createdAt={props.createdAt} timestampFormat={props.timestampFormat} />
+        <>
+          <TimelineRowTimestamp
+            createdAt={props.createdAt}
+            timestampFormat={props.timestampFormat}
+          />
+          {props.diffStats ? (
+            <DiffStatLabel
+              additions={props.diffStats.additions}
+              deletions={props.diffStats.deletions}
+              layout="inline"
+              className="shrink-0 text-xs"
+            />
+          ) : null}
+        </>
       }
     />
   );
@@ -5593,6 +5617,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           !toolIconAcceptsTint(entryToolIcon) ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
           ) : null}
+          <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
           {diffStats ? (
             <DiffStatLabel
               additions={diffStats.additions}
@@ -5601,7 +5626,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               className="shrink-0 text-xs"
             />
           ) : null}
-          <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
           <span
             className={cn(
               "flex size-4 shrink-0 items-center justify-center",

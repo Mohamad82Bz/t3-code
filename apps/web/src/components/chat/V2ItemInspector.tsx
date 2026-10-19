@@ -30,6 +30,7 @@ import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPa
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ShellCommandBlock } from "./ShellCommandBlock";
+import { ToolCallDiff } from "./ToolCallDiff";
 
 interface V2ItemInspectorProps {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
@@ -114,7 +115,14 @@ function useFetchedTurnItem(
   skip = false,
 ) {
   const wireItem = projectedItem.item;
-  const fetches = !skip && turnItemNeedsDetailFetch(wireItem);
+  const fetches =
+    !skip &&
+    (turnItemNeedsDetailFetch(wireItem) ||
+      (wireItem.type === "file_change" &&
+        wireItem.status === "completed" &&
+        wireItem.diffStr === undefined &&
+        wireItem.oldStr === undefined &&
+        wireItem.newStr === undefined));
   const detail = useTurnItemDetail(
     fetches
       ? {
@@ -304,6 +312,15 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
           </div>
           {item.status === "failed" && item.diffStr?.trim() ? (
             <StructuredValue value={item.diffStr} />
+          ) : null}
+          {item.status === "completed" ? (
+            outputState.pending ? (
+              <p className="text-muted-foreground">Loading diff…</p>
+            ) : outputState.error ? (
+              <p className="text-destructive">Couldn't load diff: {String(outputState.error)}</p>
+            ) : (
+              <ToolCallDiff item={item} />
+            )
           ) : null}
           {item.changes !== undefined && item.changes.length > 0 ? (
             <ul className="space-y-1 font-mono text-muted-foreground">

@@ -55,6 +55,74 @@ import {
 } from "./MessagesTimeline.logic";
 import type { WorkLogEntry } from "../../session-logic";
 
+describe("tool group diff totals", () => {
+  function rowsFor(additions: number, deletions = 0) {
+    const createdAt = "2026-10-19T00:00:00Z";
+    const source = makeStreamingTimelineFixture().visibleTurnItems.find(
+      (row) => row.item.type === "dynamic_tool",
+    )!;
+    if (source.item.type !== "dynamic_tool") throw new Error("Expected tool fixture");
+    const sourceItem = source.item;
+    const items = ["first", "second", "failed"].map((name, index) => {
+      const id = TurnItemId.make(`edit-${name}`);
+      return {
+        ...source,
+        sourceItemId: id,
+        position: index,
+        item: {
+          ...sourceItem,
+          id,
+          ordinal: index,
+          type: "file_change" as const,
+          fileName: "same-file.ts",
+          status: name === "failed" ? ("failed" as const) : ("completed" as const),
+          additions: name === "failed" ? 999 : additions,
+          deletions: name === "failed" ? 999 : deletions,
+        },
+      };
+    });
+    return deriveMessagesTimelineRows({
+      timelineEntries: items.map((projectedItem, index) => ({
+        id: `entry-${index}`,
+        kind: "work" as const,
+        createdAt,
+        entry: {
+          id: `work-${index}`,
+          createdAt,
+          label: "Edited same-file.ts",
+          tone: "tool" as const,
+          itemType: "file_change" as const,
+          projectedItem,
+        },
+      })),
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+  }
+
+  it("sums completed calls even when they edit the same file and ignores failed attempts", () => {
+    const row = rowsFor(5, 2).find((row) => row.kind === "work-toggle");
+    expect(row).toMatchObject({ expanded: false, diffStats: { additions: 10, deletions: 4 } });
+  });
+
+  it("omits zero totals", () => {
+    const row = rowsFor(0).find((row) => row.kind === "work-toggle");
+    expect(row).toBeDefined();
+    expect(row).not.toHaveProperty("diffStats");
+  });
+
+  it("refreshes a stable group row when only its counts change", () => {
+    const previous = computeStableMessagesTimelineRows(rowsFor(5), { result: [], byId: new Map() });
+    const next = computeStableMessagesTimelineRows(rowsFor(6), previous);
+    expect(next.result.find((row) => row.kind === "work-toggle")).toMatchObject({
+      diffStats: { additions: 12, deletions: 0 },
+    });
+    expect(next.result[0]).not.toBe(previous.result[0]);
+  });
+});
+
 describe("expanded tool group scrolling", () => {
   const entries = [{ id: "first" }, { id: "second" }];
 

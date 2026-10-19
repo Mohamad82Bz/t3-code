@@ -8,6 +8,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import type { LegendListRef } from "@legendapp/list/react";
+import * as DateTime from "effect/DateTime";
 import { act, createRef, Profiler, useState, type ComponentProps, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -131,7 +132,7 @@ function v2Item(type: string, fields: Record<string, unknown>) {
       title: null,
       startedAt: null,
       completedAt: null,
-      updatedAt: {},
+      updatedAt: DateTime.makeUnsafe(CREATED_AT),
       type,
       ...fields,
     },

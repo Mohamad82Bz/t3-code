@@ -528,6 +528,7 @@ type MessagesTimelineRowContent =
       expanded: boolean;
       summary: string;
       summaryKind: ToolGroupSummaryKind;
+      diffStats?: { additions: number; deletions: number };
       toolSurface?: WorkLogEntry["toolSurface"];
       toolIcon?: WorkLogEntry["toolIcon"];
       summaryToolIcon?: "browser" | "device" | "t3-code" | "pull-request";
@@ -1697,6 +1698,15 @@ export function deriveMessagesTimelineRows(input: {
           const summaryToolIcon = usesSingleToolCallLabel
             ? resolveWorkEntryToolPresentation(singleEntry, "completed")?.icon
             : undefined;
+          let additions = 0;
+          let deletions = 0;
+          for (const entry of visibleGroupedEntries) {
+            const item = entry.projectedItem?.item;
+            if (item?.type === "file_change" && item.status === "completed") {
+              additions += item.additions ?? 0;
+              deletions += item.deletions ?? 0;
+            }
+          }
           nextRows.push({
             kind: "work-toggle",
             id: `work-toggle:${timelineEntry.id}`,
@@ -1711,6 +1721,7 @@ export function deriveMessagesTimelineRows(input: {
                 ? singleEntry.label
                 : summarizeToolGroup(visibleGroupedEntries).summary,
             summaryKind,
+            ...(additions > 0 || deletions > 0 ? { diffStats: { additions, deletions } } : {}),
             ...(groupToolSurface ? { toolSurface: groupToolSurface } : {}),
             ...(groupToolIcon ? { toolIcon: groupToolIcon } : {}),
             ...(summaryToolIcon ? { summaryToolIcon } : {}),
@@ -2230,6 +2241,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.expanded === bw.expanded &&
         a.summary === bw.summary &&
         a.summaryKind === bw.summaryKind &&
+        Equal.equals(a.diffStats, bw.diffStats) &&
         a.toolSurface === bw.toolSurface &&
         Equal.equals(a.toolIcon, bw.toolIcon) &&
         a.hasFailure === bw.hasFailure
