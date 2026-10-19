@@ -271,6 +271,14 @@ function EnvironmentThemeSync() {
 }
 
 function ContrastAppearanceSync() {
+  const assistantMessageOpacity = useClientSettings((settings) => settings.assistantMessageOpacity);
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--assistant-message-opacity",
+      `${assistantMessageOpacity}%`,
+    );
+  }, [assistantMessageOpacity]);
+
   const appearanceContrast = useClientSettings((settings) => settings.appearanceContrast);
   const diffColorScheme = useClientSettings((settings) => settings.diffColorScheme);
 

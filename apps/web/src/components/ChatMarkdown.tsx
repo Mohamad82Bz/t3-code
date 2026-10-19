@@ -756,7 +756,7 @@ function MarkdownDetails({
         </CollapsibleTrigger>
         <CollapsiblePanel ref={revealRef} hiddenUntilFound={searching}>
           <div
-            className="pb-3 ps-6 text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]"
+            className="pb-3 ps-6 text-foreground/[calc(var(--chat-message-text-opacity,80%)+var(--appearance-contrast-boost)/5)]"
             data-markdown-details-content=""
           >
             {content}
@@ -3396,7 +3396,7 @@ function ChatMarkdown({
     <div
       ref={markdownRef}
       className={cn(
-        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)] [overflow-wrap:anywhere] [word-break:break-word]",
+        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/[calc(var(--chat-message-text-opacity,80%)+var(--appearance-contrast-boost)/5)] [overflow-wrap:anywhere] [word-break:break-word]",
         className,
       )}
       data-streaming={componentState.isStreaming ? "" : undefined}

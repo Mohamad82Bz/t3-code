@@ -30,6 +30,7 @@ import {
   type DiffLayout,
   type EnvironmentIdentificationMode,
   MAX_APPEARANCE_CONTRAST,
+  MAX_ASSISTANT_MESSAGE_OPACITY,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
   MAX_INTERFACE_FONT_SIZE,
@@ -39,6 +40,7 @@ import {
   MAX_TERMINAL_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_APPEARANCE_CONTRAST,
+  MIN_ASSISTANT_MESSAGE_OPACITY,
   MIN_GLASS_OPACITY,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PANEL_ANIMATION_DURATION_MS,
@@ -537,6 +539,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.appearanceContrast !== DEFAULT_UNIFIED_SETTINGS.appearanceContrast
       ? ["Contrast"]
       : []),
+    ...(settings.assistantMessageOpacity !== DEFAULT_UNIFIED_SETTINGS.assistantMessageOpacity
+      ? ["Assistant message opacity"]
+      : []),
     ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
     ...(settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme
       ? ["Diff colors"]
@@ -714,6 +719,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     }
     updateSettings({
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
+      assistantMessageOpacity: DEFAULT_UNIFIED_SETTINGS.assistantMessageOpacity,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
@@ -1097,6 +1103,13 @@ export function AppearanceSettingsPanel() {
     "--settings-slider-progress": `${appearanceContrastRatio * 100}%`,
     "--settings-slider-fill-offset": `${0.5 - appearanceContrastRatio}rem`,
   } as CSSProperties;
+  const assistantMessageOpacityRatio =
+    (settings.assistantMessageOpacity - MIN_ASSISTANT_MESSAGE_OPACITY) /
+    (MAX_ASSISTANT_MESSAGE_OPACITY - MIN_ASSISTANT_MESSAGE_OPACITY);
+  const assistantMessageOpacitySliderStyle = {
+    "--settings-slider-progress": `${assistantMessageOpacityRatio * 100}%`,
+    "--settings-slider-fill-offset": `${0.5 - assistantMessageOpacityRatio}rem`,
+  } as CSSProperties;
   const panelAnimationDurationRatio =
     (settings.panelAnimationDurationMs - MIN_PANEL_ANIMATION_DURATION_MS) /
     (MAX_PANEL_ANIMATION_DURATION_MS - MIN_PANEL_ANIMATION_DURATION_MS);
@@ -1169,6 +1182,55 @@ export function AppearanceSettingsPanel() {
                 style={appearanceContrastSliderStyle}
                 type="range"
                 value={settings.appearanceContrast}
+              />
+            </div>
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("setting-assistant-message-opacity")}
+          description="Adjust assistant response text brightness without changing your messages or tool cards."
+          resetAction={
+            settings.assistantMessageOpacity !==
+            DEFAULT_UNIFIED_SETTINGS.assistantMessageOpacity ? (
+              <SettingResetButton
+                label="assistant message opacity"
+                onClick={() =>
+                  updateSettings({
+                    assistantMessageOpacity: DEFAULT_UNIFIED_SETTINGS.assistantMessageOpacity,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="flex w-full items-center gap-3 sm:w-52">
+              <output
+                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+                htmlFor="assistant-message-opacity"
+              >
+                {settings.assistantMessageOpacity}%
+              </output>
+              <input
+                aria-label="Assistant message opacity"
+                className="settings-slider min-w-0 flex-1"
+                id="assistant-message-opacity"
+                max={MAX_ASSISTANT_MESSAGE_OPACITY}
+                min={MIN_ASSISTANT_MESSAGE_OPACITY}
+                onChange={(event) => {
+                  const assistantMessageOpacity = Number(event.currentTarget.value);
+                  if (
+                    Number.isInteger(assistantMessageOpacity) &&
+                    assistantMessageOpacity >= MIN_ASSISTANT_MESSAGE_OPACITY &&
+                    assistantMessageOpacity <= MAX_ASSISTANT_MESSAGE_OPACITY
+                  ) {
+                    updateSettings({ assistantMessageOpacity });
+                  }
+                }}
+                step={5}
+                style={assistantMessageOpacitySliderStyle}
+                type="range"
+                value={settings.assistantMessageOpacity}
               />
             </div>
           }

@@ -595,6 +595,26 @@ describe("ClientSettings glass opacity", () => {
   });
 });
 
+describe("ClientSettings assistant message opacity", () => {
+  it("preserves the original 80 percent default for existing settings", () => {
+    expect(decodeClientSettings({}).assistantMessageOpacity).toBe(80);
+  });
+
+  it.each([39, 101, 80.5])("rejects invalid opacity: %s", (value) => {
+    expect(() => decodeClientSettings({ assistantMessageOpacity: value })).toThrow();
+    expect(() => decodeClientSettingsPatch({ assistantMessageOpacity: value })).toThrow();
+  });
+
+  it.each([40, 80, 100])("accepts and preserves opacity: %s", (value) => {
+    expect(decodeClientSettings({ assistantMessageOpacity: value }).assistantMessageOpacity).toBe(
+      value,
+    );
+    expect(decodeClientSettingsPatch({ assistantMessageOpacity: value })).toEqual({
+      assistantMessageOpacity: value,
+    });
+  });
+});
+
 describe("ClientSettings appearance contrast", () => {
   it("defaults to the theme's original contrast", () => {
     expect(decodeClientSettings({}).appearanceContrast).toBe(100);

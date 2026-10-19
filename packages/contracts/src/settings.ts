@@ -107,6 +107,15 @@ export const AppearanceContrast = Schema.Int.check(
 );
 export type AppearanceContrast = typeof AppearanceContrast.Type;
 const DEFAULT_APPEARANCE_CONTRAST: AppearanceContrast = 100;
+export const MIN_ASSISTANT_MESSAGE_OPACITY = 40;
+export const MAX_ASSISTANT_MESSAGE_OPACITY = 100;
+export const AssistantMessageOpacity = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_ASSISTANT_MESSAGE_OPACITY,
+    maximum: MAX_ASSISTANT_MESSAGE_OPACITY,
+  }),
+);
+const DEFAULT_ASSISTANT_MESSAGE_OPACITY = 80;
 export const MIN_PANEL_ANIMATION_DURATION_MS = 0;
 export const MAX_PANEL_ANIMATION_DURATION_MS = 400;
 export const PanelAnimationDurationMs = Schema.Int.check(
@@ -321,6 +330,9 @@ export const ClientSettingsSchema = Schema.Struct({
   chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("comfortable" as const))),
   loadBalancingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   loadBalancingWeights: LoadBalancingWeights.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  assistantMessageOpacity: AssistantMessageOpacity.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_ASSISTANT_MESSAGE_OPACITY)),
+  ),
   appearanceContrast: AppearanceContrast.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_APPEARANCE_CONTRAST)),
   ),
@@ -1554,6 +1566,7 @@ export const ClientSettingsPatch = Schema.Struct({
   chatWidth: Schema.optionalKey(ChatWidth),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),
   loadBalancingWeights: Schema.optionalKey(LoadBalancingWeights),
+  assistantMessageOpacity: Schema.optionalKey(AssistantMessageOpacity),
   appearanceContrast: Schema.optionalKey(AppearanceContrast),
   panelAnimationDurationMs: Schema.optionalKey(PanelAnimationDurationMs),
   browserDefaultViewport: Schema.optionalKey(PreviewViewportSetting),

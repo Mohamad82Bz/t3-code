@@ -220,6 +220,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["colors borders interface"],
   },
   {
+    id: "setting-assistant-message-opacity",
+    title: "Assistant message opacity",
+    to: "/settings/appearance",
+    searchTerms: ["chat response text transparency dim brightness readability"],
+  },
+  {
     // Prefixed because the slider control already owns the `glass-opacity` id.
     id: "setting-glass-opacity",
     title: "Glass opacity",

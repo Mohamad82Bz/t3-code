@@ -2665,6 +2665,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           >
             <ChatMarkdown
               text={messageText}
+              className="[--chat-message-text-opacity:var(--assistant-message-opacity,80%)]"
               cwd={ctx.markdownCwd}
               threadRef={ctx.threadRef ?? undefined}
               isStreaming={Boolean(row.message.streaming)}
