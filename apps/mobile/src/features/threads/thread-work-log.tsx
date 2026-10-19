@@ -959,6 +959,13 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const fetchedItem = fetchedDetail.data?.item ?? null;
   const isRead = toolGroupAction(row.workEntry) === "read";
   const shownItem = fetchedItem ?? row.projectedItem.item;
+  const diffStats =
+    shownItem.type === "file_change" &&
+    shownItem.status === "completed" &&
+    shownItem.additions !== undefined &&
+    shownItem.deletions !== undefined
+      ? { additions: shownItem.additions, deletions: shownItem.deletions }
+      : null;
   const call =
     expanded && !isRead && shownItem.type === "command_execution"
       ? toolCallLines({ command: shownItem.input })
@@ -1007,7 +1014,13 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const answerPreview = row.workEntry.questionAnswer
     ? getQuestionAnswerPreview(row.workEntry.questionAnswer)
     : null;
-  const accessiblePreview = [previewText, answerPreview].filter(Boolean).join(": ");
+  const accessiblePreview = [
+    previewText,
+    answerPreview,
+    diffStats ? `${diffStats.additions} additions, ${diffStats.deletions} deletions` : null,
+  ]
+    .filter(Boolean)
+    .join(": ");
   const displayText = row.groupStandIn?.label ?? workEntryRowLabel(row.workEntry, expanded);
   const isSystemNotice = row.projectedItem.item.type === "system_notice";
   const isUsageLimit =
@@ -1115,6 +1128,20 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         )}
 
         <View className="shrink-0 flex-row items-center gap-px">
+          {diffStats ? (
+            <View
+              className="mr-1 flex-row gap-1"
+              accessible
+              accessibilityLabel={`${diffStats.additions} additions, ${diffStats.deletions} deletions`}
+            >
+              <Text className="font-mono text-3xs text-adaptive-emerald-600-400">
+                +{diffStats.additions.toLocaleString()}
+              </Text>
+              <Text className="font-mono text-3xs text-adaptive-rose-600-400">
+                -{diffStats.deletions.toLocaleString()}
+              </Text>
+            </View>
+          ) : null}
           {props.copied ? (
             <Text className="pr-1 font-t3-medium text-3xs text-adaptive-emerald-600-400">
               Copied

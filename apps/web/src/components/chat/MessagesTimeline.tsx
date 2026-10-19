@@ -7,6 +7,7 @@ import {
 import { MarkdownFindContext, findRevealRef } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
+import { DiffStatLabel } from "./DiffStatLabel";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -5371,6 +5372,14 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? undefined
       : (workEntry.toolIcon ?? workEntry.toolSource?.icon);
   const isReasoning = workEntry.itemType === "reasoning";
+  const fileChange = workEntry.projectedItem?.item;
+  const diffStats =
+    fileChange?.type === "file_change" &&
+    fileChange.status === "completed" &&
+    fileChange.additions !== undefined &&
+    fileChange.deletions !== undefined
+      ? { additions: fileChange.additions, deletions: fileChange.deletions }
+      : null;
   const questionHeading = workEntry.questionAnswer
     ? getQuestionTextPreview(workEntry.questionAnswer)
     : "";
@@ -5460,7 +5469,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         ? "text-secondary-label"
         : "text-foreground/80";
   const threadLabel = isReasoning ? null : threadReadLabel(previewText, threadTarget);
-  const accessiblePreview = [threadLabel?.text ?? previewText, answerPreview]
+  const accessiblePreview = [
+    threadLabel?.text ?? previewText,
+    answerPreview,
+    diffStats ? `${diffStats.additions} additions, ${diffStats.deletions} deletions` : null,
+  ]
     .filter(Boolean)
     .join(": ");
   const accessibleDisplayText = showFailedIndicator
@@ -5579,6 +5592,14 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           !showDestructiveRowStyle &&
           !toolIconAcceptsTint(entryToolIcon) ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
+          ) : null}
+          {diffStats ? (
+            <DiffStatLabel
+              additions={diffStats.additions}
+              deletions={diffStats.deletions}
+              layout="inline"
+              className="shrink-0 text-xs"
+            />
           ) : null}
           <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
           <span

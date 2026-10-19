@@ -33,6 +33,7 @@ import {
 } from "@t3tools/contracts";
 import { AgentScope, AgentScopeThreadId } from "@t3tools/shared/AgentScope";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
+import { fileChangeStats } from "@t3tools/shared/fileChangeStats";
 import { type SelfInvocation, selfInvocationArgs } from "@t3tools/shared/nodeRuntime";
 import { FILE_HEADERS_ONLY, formatPatch, structuredPatch } from "diff";
 import * as Cause from "effect/Cause";
@@ -754,7 +755,12 @@ function structuredFileChanges(toolCall: AcpToolCallState) {
   if (!Array.isArray(content)) return [];
   return content.flatMap((entry) => {
     const diff = unknownRecord(entry);
-    if (diff?.type !== "diff" || !Array.isArray(diff.changes)) return [];
+    if (diff?.type !== "diff") return [];
+    if (!Array.isArray(diff.changes)) {
+      return typeof diff.path === "string" && diff.path.trim().length > 0
+        ? [{ operation: typeof diff.oldText === "string" ? "modify" : "create", path: diff.path }]
+        : [];
+    }
     return diff.changes.flatMap((candidate) => {
       const change = unknownRecord(candidate);
       const operation = typeof change?.operation === "string" ? change.operation.trim() : "";
@@ -787,12 +793,14 @@ export function acpToolCallDiffPatch(content: unknown): string | undefined {
     const diff = unknownRecord(entry);
     return diff?.type === "diff" ? [diff] : [];
   });
+  const patches: string[] = [];
   for (const diff of diffs) {
-    const patch = unknownRecord(diff.patch);
-    if (typeof patch?.text === "string") return patch.text;
-  }
-  const v1Patches = diffs.flatMap((diff) => {
-    if (typeof diff.path !== "string" || typeof diff.newText !== "string") return [];
+    const suppliedPatch = unknownRecord(diff.patch);
+    if (typeof suppliedPatch?.text === "string") {
+      patches.push(suppliedPatch.text);
+      continue;
+    }
+    if (typeof diff.path !== "string" || typeof diff.newText !== "string") return undefined;
     const oldText = typeof diff.oldText === "string" ? diff.oldText : undefined;
     const patch = structuredPatch(
       oldText === undefined ? "/dev/null" : diff.path,
@@ -806,9 +814,11 @@ export function acpToolCallDiffPatch(content: unknown): string | undefined {
         maxEditLength: oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
       },
     );
-    return patch === undefined || patch.hunks.length === 0 ? [] : [patch];
-  });
-  return v1Patches.length === 0 ? undefined : formatPatch(v1Patches, FILE_HEADERS_ONLY);
+    // Do not expose partial totals when another file exceeded the diff budget.
+    if (patch === undefined) return undefined;
+    if (patch.hunks.length > 0) patches.push(formatPatch(patch, FILE_HEADERS_ONLY));
+  }
+  return patches.length === 0 ? undefined : patches.join("\n");
 }
 
 function pathFromToolCall(toolCall: AcpToolCallState): string | undefined {
@@ -3094,6 +3104,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               fileName: changes[0]!.path,
               changes,
               ...(diffText === undefined ? {} : { diffStr: diffText }),
+              ...fileChangeStats(diffText),
             };
           } else {
             switch (toolCall.kind) {
@@ -3180,6 +3191,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   type: "file_change",
                   fileName: path ?? toolCall.title ?? "File change",
                   ...(diffText === undefined ? {} : { diffStr: diffText }),
+                  ...fileChangeStats(diffText),
                 };
                 break;
               case "fetch": {

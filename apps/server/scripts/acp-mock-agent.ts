@@ -1072,7 +1072,7 @@ const program = Effect.gen(function* () {
                 ],
                 patch: {
                   format: "git_patch",
-                  text: "diff --git a/old.ts b/new.ts\nrename from old.ts\nrename to new.ts\n",
+                  text: "diff --git a/old.ts b/new.ts\nrename from old.ts\nrename to new.ts\n@@ -1 +1,2 @@\n-before\n+after\n+extra\n",
                 },
               },
             ],

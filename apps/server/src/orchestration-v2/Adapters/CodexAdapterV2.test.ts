@@ -2636,6 +2636,82 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         : [],
     );
 
+  it.effect("projects file change counts for all files in a Codex patch", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "diff-count-thread";
+      const nativeTurnId = "diff-count-turn";
+      const changes = [
+        { path: "/repo/new.txt", kind: { type: "add" }, diff: "@@ -0,0 +1,2 @@\n+one\n+two\n" },
+        { path: "/repo/edit.txt", kind: { type: "update" }, diff: "@@ -1 +1 @@\n-old\n+new\n" },
+        { path: "/repo/remove.txt", kind: { type: "delete" }, diff: "@@ -1 +0,0 @@\n-gone\n" },
+      ];
+      const transcript = makeCodexReplayTranscript({
+        scenario: "diff-counts",
+        entries: [
+          ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "work" }),
+          {
+            type: "emit_inbound",
+            label: "file change",
+            frame: {
+              method: "item/completed",
+              params: {
+                threadId: nativeThreadId,
+                turnId: nativeTurnId,
+                item: {
+                  type: "fileChange",
+                  id: "patch-counts",
+                  status: "completed",
+                  changes,
+                },
+              },
+            },
+          },
+          {
+            type: "emit_inbound",
+            label: "done",
+            frame: {
+              method: "turn/completed",
+              params: {
+                threadId: nativeThreadId,
+                turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+              },
+            },
+          },
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("diff-count-attempt"),
+          text: "work",
+        }),
+      );
+      yield* harness.firstTerminal;
+      const item = harness.events
+        .flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "file_change"
+            ? [event.turnItem]
+            : [],
+        )
+        .at(-1);
+      assert.equal(item?.additions, 3);
+      assert.equal(item?.deletions, 2);
+      assert.deepEqual(
+        item?.changes?.map((change) => change.path),
+        changes.map((change) => change.path),
+      );
+      assert.equal(item?.diffStr, changes.map((change) => change.diff).join("\n"));
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("keeps an asynchronous Codex question actionable after the turn completes", () =>
     Effect.scoped(
       Effect.gen(function* () {

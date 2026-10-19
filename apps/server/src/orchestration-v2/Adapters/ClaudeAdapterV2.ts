@@ -1,5 +1,6 @@
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
+import { claudeFileChangeStats } from "./claudeFileChange.ts";
 import {
   dynamicToolTitle,
   formatReadToolLabel,
@@ -4420,6 +4421,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     type: "file_change",
                     fileName: fileNameFromClaudeTool(input.toolName, input.toolInput),
                     ...(outputText.length === 0 ? {} : { diffStr: outputText }),
+                    ...(input.status === "completed" ? claudeFileChangeStats(outputValue) : {}),
                   }
                 : itemType === "web_search"
                   ? {

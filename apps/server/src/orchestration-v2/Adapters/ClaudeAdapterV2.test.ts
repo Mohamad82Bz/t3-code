@@ -2669,6 +2669,139 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
 
+  it.effect("projects native Claude edit and write counts from completed tool results", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("claude-diff-counts"),
+          text: "Edit demo.txt",
+          attachments: [],
+        }),
+      );
+      const scenarios = [
+        {
+          name: "Write",
+          output: { type: "create", content: "one\ntwo\n", structuredPatch: [] },
+          expected: { additions: 2, deletions: 0 },
+        },
+        {
+          name: "Edit",
+          output: {
+            structuredPatch: [
+              {
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 2,
+                lines: ["-old", "+new", "+extra"],
+              },
+            ],
+          },
+          expected: { additions: 2, deletions: 1 },
+        },
+        {
+          name: "Write",
+          output: {
+            type: "update",
+            content: "",
+            structuredPatch: [
+              { oldStart: 1, oldLines: 2, newStart: 0, newLines: 0, lines: ["-one", "-two"] },
+            ],
+          },
+          expected: { additions: 0, deletions: 2 },
+        },
+        {
+          name: "Write",
+          output: { type: "create", content: "proposed", staged: true },
+          expected: { additions: undefined, deletions: undefined },
+        },
+        {
+          name: "Write",
+          output: {
+            type: "update",
+            content: "unknown before",
+            structuredPatch: [],
+            originalFile: null,
+          },
+          expected: { additions: undefined, deletions: undefined },
+        },
+      ];
+      for (const [index, scenario] of scenarios.entries()) {
+        const id = `claude-diff-${index}`;
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "assistant",
+            uuid: `${id}-assistant`,
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            message: {
+              id: `${id}-message`,
+              type: "message",
+              role: "assistant",
+              model: "claude-sonnet-4-6",
+              content: [
+                {
+                  type: "tool_use",
+                  id,
+                  name: scenario.name,
+                  input: {
+                    file_path: "/repo/demo.txt",
+                    old_string: "old",
+                    new_string: "new",
+                    content: "one\ntwo\n",
+                  },
+                },
+              ],
+            },
+          }),
+        );
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "user",
+            uuid: `${id}-result`,
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            message: {
+              role: "user",
+              content: [
+                { type: "tool_result", tool_use_id: id, content: "File updated.", is_error: false },
+              ],
+            },
+            tool_use_result: scenario.output,
+          }),
+        );
+      }
+      yield* harness.offerAndWait(makeResultFrame({ uuid: "claude-diff-done", result: "Done" }));
+      yield* Queue.take(harness.terminalReceipts);
+      for (const [index, scenario] of scenarios.entries()) {
+        const id = `claude-diff-${index}`;
+        const event = harness.events.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "file_change" &&
+            event.turnItem.nativeItemRef?.nativeId === id,
+        );
+        assert.isDefined(event);
+        if (event?.type === "turn_item.updated" && event.turnItem.type === "file_change") {
+          assert.equal(event.turnItem.status, "completed");
+          assert.deepEqual(
+            { additions: event.turnItem.additions, deletions: event.turnItem.deletions },
+            scenario.expected,
+          );
+        }
+      }
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect.each([
     { isError: false, title: "Check weather" },
     { isError: true, title: "Check weather" },

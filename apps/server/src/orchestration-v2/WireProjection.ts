@@ -10,6 +10,7 @@ import {
   toolOutputImages,
   toolOutputIndicatesFailure,
 } from "@t3tools/shared/toolOutput";
+import { fileChangeStats } from "@t3tools/shared/fileChangeStats";
 
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
@@ -112,6 +113,14 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
     }
     case "file_change": {
       const { diffStr, oldStr: _old, newStr: _new, ...projected } = item;
+      // Older provider records contain patch text without precomputed counts.
+      if (
+        item.status === "completed" &&
+        item.additions === undefined &&
+        item.deletions === undefined
+      ) {
+        return { ...projected, ...fileChangeStats(diffStr) };
+      }
       return item.status === "failed" && diffStr?.trim()
         ? { ...projected, diffStr: truncateDetail(diffStr) }
         : projected;

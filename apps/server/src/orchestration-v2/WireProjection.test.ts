@@ -367,6 +367,24 @@ describe("orchestration V2 wire projection", () => {
     expect(failed).not.toHaveProperty("newStr");
   });
 
+  it("recovers legacy file change counts without sending patches or changing stored items", () => {
+    const item = {
+      ...base,
+      type: "file_change" as const,
+      fileName: "demo.txt",
+      diffStr: "--- demo.txt\n+++ demo.txt\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n",
+    };
+    const projected = projectTurnItemForWire(item);
+    expect(projected).toMatchObject({ additions: 2, deletions: 1 });
+    expect(projected).not.toHaveProperty("diffStr");
+    expect(item).not.toHaveProperty("additions");
+    expect(projectTurnItemForWire(projected)).toEqual(projected);
+    expect(
+      projectTurnItemForWire({ ...item, diffStr: "@@ -1 +1,2 @@\n-old\n+new" }),
+    ).not.toHaveProperty("additions");
+    expect(projectTurnItemForWire({ ...item, status: "failed" })).not.toHaveProperty("additions");
+  });
+
   it("retains only result identities and failure metadata in live tool events", () => {
     const output = {
       isError: true,
