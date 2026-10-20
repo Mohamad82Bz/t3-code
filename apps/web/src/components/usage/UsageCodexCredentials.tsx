@@ -1,9 +1,7 @@
-import { useAtomValue } from "@effect/atom-react";
 import {
   type EnvironmentId,
   type UsageLimitSourceAccount,
   type UsageLimitSourceId,
-  type UsageLimitSourceAccountActionInput,
 } from "@t3tools/contracts";
 import {
   collectCodexCredentialSources,
@@ -12,10 +10,8 @@ import {
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
 import { MessageSquareIcon, PlayIcon, PowerIcon } from "lucide-react";
-import { useRef, useState } from "react";
 
-import { serverEnvironment } from "../../state/server";
-import { useAtomCommand } from "../../state/use-atom-command";
+import { useCodexCredentialAction } from "./CodexCredentialControls";
 import { cn } from "../../lib/utils";
 import { OpenAI } from "../Icons";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -34,32 +30,11 @@ function CredentialCard({
   readonly sourceId: UsageLimitSourceId;
   readonly now: number;
 }) {
-  const command = serverEnvironment.usageLimitSourceAccountAction;
-  const permitted = useAtomValue(command.permissionAtom(environmentId));
-  const run = useAtomCommand(command, { reportFailure: false });
-  const pending = useRef(false);
-  const [busy, setBusy] = useState<"toggle" | "startQuota" | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const available = permitted && account.canManage && account.authIndex;
-  const act = async (action: UsageLimitSourceAccountActionInput["action"]) => {
-    if (pending.current || !available) return;
-    pending.current = true;
-    setBusy(action.type);
-    setStatus(null);
-    const result = await run({
-      environmentId,
-      input: { sourceId, accountId: account.id, authIndex: account.authIndex!, action },
-    });
-    pending.current = false;
-    setBusy(null);
-    setStatus(
-      result._tag === "Success"
-        ? result.value.message
-        : "error" in result.cause && result.cause.error instanceof Error
-          ? result.cause.error.message
-          : "Could not update the credential. Refresh to check its state.",
-    );
-  };
+  const { busy, status, available, act } = useCodexCredentialAction(
+    account,
+    environmentId,
+    sourceId,
+  );
   return (
     <article
       className={cn(

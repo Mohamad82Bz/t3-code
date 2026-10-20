@@ -137,6 +137,11 @@ The accounts appear under **Usage → Limits**. Codex credentials use first-lett
 comments on the right. Disabled credentials remain visible. Click or tap a card to enable or
 disable its credential in CPA. Provider-management permission is required.
 
+On web and desktop, the current chat environment's Codex accounts also appear in a compact
+bottom-left dock beside the sidebar. It shares the same quota readings and credential controls.
+Collapse it when you want more space; when the chat gutter is too narrow, open it from the Codex
+shortcut instead.
+
 **Start Quota** sends `say ok` through that credential's `<prefix>/gpt-6-luna` model. It temporarily
 assigns a unique prefix when needed and enables a disabled credential, then restores its original
 state even if inference fails. This makes an inference request and uses a small amount of quota;

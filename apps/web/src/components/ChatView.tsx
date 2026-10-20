@@ -394,6 +394,7 @@ import {
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { CodexQuotaDock } from "./chat/CodexQuotaDock";
 import { createPageScrollController, type PageScrollKey } from "./chat/pageScrollController";
 import { isTimelineScrollTarget } from "./chat/timelineScrollTarget";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
@@ -7923,6 +7924,10 @@ export default function ChatView(props: ChatViewProps) {
             onDrop={workspaceFileDropHandlers.onDrop}
           >
             <ThreadFind onClose={focusComposerStable} />
+            <CodexQuotaDock
+              key={activeThread.environmentId}
+              environmentId={activeThread.environmentId}
+            />
             {isWorkspaceFileDragActive ? (
               <div
                 className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
