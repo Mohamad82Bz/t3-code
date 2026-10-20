@@ -14,6 +14,23 @@ const descriptor = {
 } as const;
 
 describe("ExecutionEnvironmentDescriptor", () => {
+  it("keeps spectator presence optional for stock servers", () => {
+    expect(decodeDescriptor(descriptor).capabilities.threadPresence).toBeUndefined();
+    expect(
+      decodeDescriptor({
+        ...descriptor,
+        capabilities: { ...descriptor.capabilities, threadPresence: true },
+      }).capabilities.threadPresence,
+    ).toBe(true);
+    const stockCapabilities = Schema.Struct({ repositoryIdentity: Schema.Boolean });
+    expect(
+      Schema.decodeUnknownSync(stockCapabilities)({
+        repositoryIdentity: true,
+        threadPresence: true,
+      }),
+    ).toEqual({ repositoryIdentity: true });
+  });
+
   it("keeps settled cleanup optional alongside current worktree capabilities", () => {
     expect(decodeDescriptor(descriptor).capabilities.settledWorktreeCleanup).toBeUndefined();
     const capabilities = {

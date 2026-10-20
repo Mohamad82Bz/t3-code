@@ -3,6 +3,20 @@
 Connect a phone, browser, or another desktop app to T3 Code running on a different
 machine. That machine must stay running and reachable while you work.
 
+## Session spectators
+
+When you open a thread on another environment, its viewers can see your machine
+as a spectator, including you. Viewing a thread on your own environment does not
+add you. Spectators leave when they switch threads, hide the app, or disconnect;
+multiple windows from the same environment count once.
+
+Presence is cosmetic, not a verified identity or permission to control the thread.
+It uses your primary environment's name and machine icon, with known machines
+shown using their Connections names. Clients without a primary environment can
+see spectators without announcing a machine. Presence is enabled only when
+supported by both ends; stock clients and servers continue working normally
+without spectator badges.
+
 ## T3 Connect
 
 T3 Connect makes an environment available to your other devices without setting

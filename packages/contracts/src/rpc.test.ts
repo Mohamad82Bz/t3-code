@@ -5,6 +5,12 @@ import * as Schema from "effect/Schema";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS, WsRpcGroup, WsSubscribeServerConfigRpc } from "./rpc.ts";
 
+const stockThreadSubscription = WsRpcGroup.requests.get(
+  ORCHESTRATION_V2_WS_METHODS.subscribeThread,
+);
+if (stockThreadSubscription === undefined) throw new Error("subscribeThread is not registered");
+const decodeThreadSubscription = Schema.decodeUnknownSync(stockThreadSubscription.payloadSchema);
+
 describe("subscribeServerConfig payload compatibility", () => {
   it("is accepted by a server whose schema predates the field", () => {
     const oldServerPayload = Schema.Struct({});
@@ -31,6 +37,12 @@ describe("WebSocket RPC contracts", () => {
 
     expect(methods).toEqual(expect.arrayContaining(Object.values(ORCHESTRATION_V2_WS_METHODS)));
     expect(methods.filter((method) => method.startsWith("orchestrationV1."))).toEqual([]);
+  });
+
+  it("keeps stock thread subscriptions independent of cosmetic presence", () => {
+    expect(decodeThreadSubscription({ threadId: "thread-1" })).toEqual({
+      threadId: "thread-1",
+    });
   });
 
   it("rejects server-internal commands sent to dispatchCommand", () => {

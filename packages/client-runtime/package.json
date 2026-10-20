@@ -187,6 +187,10 @@
       "types": "./src/state/presentation.ts",
       "default": "./src/state/presentation.ts"
     },
+    "./state/thread-presence": {
+      "types": "./src/state/threadPresence.ts",
+      "default": "./src/state/threadPresence.ts"
+    },
     "./state/device": {
       "types": "./src/state/device.ts",
       "default": "./src/state/device.ts"

@@ -137,6 +137,8 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
+import { ComposerSpectators } from "./ComposerSpectators";
+import { useThreadSpectators } from "../../state/threadPresence";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { useComposerTriggerState } from "./useComposerTriggerState";
@@ -1998,6 +2000,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onRemoveEditingQueuedAttachment,
   } = props;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const spectators = useThreadSpectators(
+    environmentId,
+    routeKind === "server" ? activeThreadId : null,
+  );
   const composerDraftTargetKey = composerTargetKey(composerDraftTarget);
   const {
     heldRequestIds,
@@ -6444,6 +6450,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               )}
             >
               {composerControls}
+              <ComposerSpectators spectators={spectators} />
             </div>,
             restingControlsHost,
           )
@@ -7235,6 +7242,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   {composerControlsCollapsed ? null : composerControls}
                 </div>
+                {isComposerResting ? null : <ComposerSpectators spectators={spectators} />}
 
                 <div
                   ref={setRestingActionsElement}
@@ -7363,6 +7371,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     )}
                   >
                     {composerControls}
+                    <ComposerSpectators spectators={spectators} />
                   </div>
                 </div>
               </div>

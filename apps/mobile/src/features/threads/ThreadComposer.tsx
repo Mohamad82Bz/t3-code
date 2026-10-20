@@ -64,6 +64,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { ComposerAttachmentButton } from "./ComposerAttachmentButton";
+import { ComposerSpectators } from "./ComposerSpectators";
 import {
   ComposerAttachmentStrip,
   ComposerAttachmentThumbnail,
@@ -1052,6 +1053,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     </View>
                   </View>
                 )}
+                <ComposerSpectators
+                  environmentId={props.environmentId}
+                  threadId={props.selectedThread.id}
+                />
                 <View className="shrink-0 flex-row items-center">
                   <ComposerDictationPrimaryAction
                     state={voiceInput.state}
