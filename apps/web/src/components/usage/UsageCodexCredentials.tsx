@@ -30,11 +30,7 @@ function CredentialCard({
   readonly sourceId: UsageLimitSourceId;
   readonly now: number;
 }) {
-  const { busy, status, available, act } = useCodexCredentialAction(
-    account,
-    environmentId,
-    sourceId,
-  );
+  const { busy, available, act } = useCodexCredentialAction(account, environmentId, sourceId);
   return (
     <article
       className={cn(
@@ -151,11 +147,6 @@ function CredentialCard({
             credits={account.usageLimits.resetCredits}
             now={now}
           />
-        ) : null}
-        {status ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            {status}
-          </p>
         ) : null}
         {account.usageLimits.unavailable ? (
           <p className="text-xs text-muted-foreground">

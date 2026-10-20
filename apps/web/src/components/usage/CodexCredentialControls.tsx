@@ -13,6 +13,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 
 export function useCodexCredentialAction(
@@ -25,28 +26,31 @@ export function useCodexCredentialAction(
   const run = useAtomCommand(command, { reportFailure: false });
   const pending = useRef(false);
   const [busy, setBusy] = useState<"toggle" | "startQuota" | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
   const available = Boolean(permitted && account.canManage && account.authIndex);
   const act = async (action: UsageLimitSourceAccountActionInput["action"]) => {
     if (pending.current || !available) return;
     pending.current = true;
     setBusy(action.type);
-    setStatus(null);
     const result = await run({
       environmentId,
       input: { sourceId, accountId: account.id, authIndex: account.authIndex!, action },
     });
     pending.current = false;
     setBusy(null);
-    setStatus(
-      result._tag === "Success"
-        ? result.value.message
-        : "error" in result.cause && result.cause.error instanceof Error
-          ? result.cause.error.message
-          : "Could not update the credential. Refresh to check its state.",
+    toastManager.add(
+      stackedThreadToast({
+        type: result._tag === "Success" ? "success" : "error",
+        title: account.identifier ? `Codex account ${account.identifier}` : "Codex credential",
+        description:
+          result._tag === "Success"
+            ? result.value.message
+            : "error" in result.cause && result.cause.error instanceof Error
+              ? result.cause.error.message
+              : "Could not update the credential. Refresh to check its state.",
+      }),
     );
   };
-  return { busy, status, available, act };
+  return { busy, available, act };
 }
 
 export function CompactCodexCredentialCard({
@@ -60,11 +64,7 @@ export function CompactCodexCredentialCard({
   readonly sourceId: UsageLimitSourceId;
   readonly now: number;
 }) {
-  const { busy, status, available, act } = useCodexCredentialAction(
-    account,
-    environmentId,
-    sourceId,
-  );
+  const { busy, available, act } = useCodexCredentialAction(account, environmentId, sourceId);
   const session = account.usageLimits.windows.find((window) => window.kind === "session");
   const weekly = account.usageLimits.windows.find((window) => window.kind === "weekly");
   const sessionLeft = session ? remainingPercent(session) : null;
@@ -152,11 +152,6 @@ export function CompactCodexCredentialCard({
           </Tooltip>
         </div>
       </div>
-      {status ? (
-        <p role="status" className="px-2 pb-2 text-2xs text-muted-foreground">
-          {status}
-        </p>
-      ) : null}
     </article>
   );
 }

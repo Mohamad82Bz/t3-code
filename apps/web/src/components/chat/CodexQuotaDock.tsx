@@ -13,6 +13,7 @@ import { OpenAI } from "../Icons";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import { CompactCodexCredentialCard } from "../usage/CodexCredentialControls";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { resolveCodexQuotaDockLayout } from "./codexQuotaDockLayout";
@@ -30,7 +31,6 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
   const snapshots = useAtomValue(quotaSourcesAtom(environmentId));
   const refresh = useAtomCommand(serverEnvironment.refreshProviders, { reportFailure: false });
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useLocalStorage(
     "codex-quota-dock-collapsed",
     false,
@@ -52,12 +52,19 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
   const refreshQuotas = async () => {
     if (refreshing) return;
     setRefreshing(true);
-    setError(null);
     const result = await refreshUsageLimits(environmentId, () =>
       refresh({ environmentId, input: {} }),
     );
     setRefreshing(false);
-    if (result?._tag === "Failure") setError("Could not refresh quotas. Showing the last reading.");
+    if (result?._tag === "Failure") {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not refresh Codex quotas",
+          description: "Showing the last reading.",
+        }),
+      );
+    }
   };
   if (!dock || sources.length === 0) return null;
   const contents = (
@@ -139,11 +146,6 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
           </section>
         ))}
       </div>
-      {error ? (
-        <p role="status" className="px-1 text-2xs text-muted-foreground">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
   return (
