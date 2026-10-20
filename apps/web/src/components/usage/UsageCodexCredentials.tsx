@@ -38,7 +38,7 @@ function CredentialCard({
   return (
     <article
       className={cn(
-        "flex w-44 min-w-0 max-w-full flex-col rounded-lg border bg-card",
+        "flex h-[26rem] w-44 min-w-0 max-w-full flex-col rounded-lg border bg-card",
         account.disabled ? "border-dashed border-border/60" : "border-border",
         account.commented && "bg-muted/20",
       )}
@@ -54,7 +54,7 @@ function CredentialCard({
               onClick={() =>
                 void act({ type: "toggle", expectedDisabled: account.disabled ?? false })
               }
-              className="flex flex-col gap-4 rounded-t-lg p-3 text-start outline-none hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+              className="flex min-w-0 shrink-0 flex-col gap-4 rounded-t-lg p-3 text-start outline-none hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
             />
           }
         >
@@ -111,22 +111,26 @@ function CredentialCard({
             : "Credential management requires provider-management permission and a physical CPA auth file"}
         </TooltipPopup>
       </Tooltip>
-      <div className="flex flex-col gap-2 border-t border-border/60 p-3">
-        {account.email ? (
-          <RedactedSensitiveText
-            value={account.email}
-            ariaLabel="Toggle account email visibility"
-            revealTooltip="Click to reveal email"
-            hideTooltip="Click to hide email"
-            className="w-fit max-w-full"
-          />
-        ) : null}
-        {account.commented ? (
-          <span className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-            <MessageSquareIcon className="size-3" />
-            Has comment
-          </span>
-        ) : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-contain border-t border-border/60 p-3">
+        <div className="h-5 min-w-0 shrink-0">
+          {account.email ? (
+            <RedactedSensitiveText
+              value={account.email}
+              ariaLabel="Toggle account email visibility"
+              revealTooltip="Click to reveal email"
+              hideTooltip="Click to hide email"
+              className="max-w-full truncate text-start"
+            />
+          ) : null}
+        </div>
+        <span className="flex h-4 shrink-0 items-center gap-1.5 text-2xs text-muted-foreground">
+          {account.commented ? (
+            <>
+              <MessageSquareIcon className="size-3" />
+              Has comment
+            </>
+          ) : null}
+        </span>
         <Button
           variant="outline"
           size="xs"
