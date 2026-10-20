@@ -108,6 +108,7 @@ function makeTestAdapter(input: {
   readonly failResumeOnce?: Ref.Ref<boolean>;
   readonly initialContextUsage?: OrchestrationV2ProviderThread["contextUsage"];
   readonly getModelContextWindow?: (selection: ModelSelection) => number | undefined;
+  readonly getAutoCompactThreshold?: () => number | undefined;
   readonly canReuseContextUsage?: ProviderAdapter.ProviderAdapterV2SessionRuntime["canReuseContextUsage"];
   readonly tokenUsageByRunOrdinal?: Readonly<
     Record<number, Omit<OrchestrationV2ProviderTurnTokenUsage, "updatedAt">>
@@ -149,6 +150,9 @@ function makeTestAdapter(input: {
           ...(input.getModelContextWindow === undefined
             ? {}
             : { getModelContextWindow: input.getModelContextWindow }),
+          ...(input.getAutoCompactThreshold === undefined
+            ? {}
+            : { getAutoCompactThreshold: input.getAutoCompactThreshold }),
           ...(input.canReuseContextUsage === undefined
             ? {}
             : { canReuseContextUsage: input.canReuseContextUsage }),
@@ -903,7 +907,12 @@ describe("orchestration v2 provider switching", () => {
       }),
     ),
   );
-  it.live.each(["turn-start", "injection", "large-missed-request"] as const)(
+  it.live.each([
+    "turn-start",
+    "injection",
+    "large-missed-request",
+    "high-context-missed-request",
+  ] as const)(
     "recovers %s failure without duplicating history in the same native thread",
     (failure) =>
       Effect.scoped(
@@ -931,7 +940,14 @@ describe("orchestration v2 provider switching", () => {
               capturedTurns,
               injectedHistory,
               nativeThreadGeneration: generation,
-              getModelContextWindow: () => 32_000,
+              getModelContextWindow: () =>
+                failure === "high-context-missed-request" ? undefined : 32_000,
+              ...(failure === "high-context-missed-request"
+                ? {
+                    initialContextUsage: { usedTokens: 115_761 },
+                    getAutoCompactThreshold: () => 500_000,
+                  }
+                : {}),
               ...(failure !== "injection"
                 ? { failStartOnce: failOnce }
                 : { failInjectionOnce: failOnce }),

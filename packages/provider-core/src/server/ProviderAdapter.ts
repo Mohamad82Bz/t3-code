@@ -578,6 +578,7 @@ export interface ProviderAdapterV2SessionRuntime {
     modelSelection: ModelSelection,
     cwd?: string | null,
   ) => number | undefined;
+  readonly getAutoCompactThreshold?: () => number | undefined;
   readonly canReuseContextUsage?: (previous: ModelSelection, next: ModelSelection) => boolean;
   readonly ensureThread: (
     input: ProviderAdapterV2EnsureThreadInput,

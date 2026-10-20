@@ -266,6 +266,20 @@ describe("custom model settings", () => {
   });
 });
 
+describe("ClaudeSettings context capacity", () => {
+  it("detects the context window by default and accepts an explicit token limit", () => {
+    expect(decodeClaudeSettings({}).contextWindow).toBe("");
+    expect(decodeClaudeSettings({ contextWindow: "500000" }).contextWindow).toBe("500000");
+  });
+
+  it.each(["0", "-1", "500k", "500000.5", "1000000000"])(
+    "rejects an invalid context capacity: %s",
+    (contextWindow) => {
+      expect(() => decodeClaudeSettings({ contextWindow })).toThrow();
+    },
+  );
+});
+
 describe("ClaudeSettings auto-compaction", () => {
   it("uses Claude's default threshold when no override is configured", () => {
     expect(decodeClaudeSettings({}).autoCompactWindow).toBe("");

@@ -1284,6 +1284,56 @@ describe("ClaudeAdapterV2 executable path", () => {
   );
 });
 
+describe("ClaudeAdapterV2 context limits", () => {
+  it.effect.each([
+    { contextWindow: "", autoCompactWindow: "500000", expectedCapacity: undefined },
+    { contextWindow: "500000", autoCompactWindow: "500000", expectedCapacity: 500_000 },
+  ])("exposes the configured limits to handoff budgeting: $contextWindow", (limits) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
+          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          settings: { ...DEFAULT_CLAUDE_SETTINGS, ...limits },
+          environment: {},
+          attachmentsDir: "/unused",
+          fileSystem: yield* FileSystem.FileSystem,
+          path: yield* Path.Path,
+          crypto: yield* Crypto.Crypto,
+          idAllocator: yield* IdAllocator.IdAllocatorV2,
+          queryRunner: {
+            allocateSessionId: Effect.succeed("native-context-limits"),
+            open: () => Effect.die("unused"),
+            forkSession: () => Effect.die("unused"),
+            subagentLaunchToolUseId: () => Effect.succeed(null),
+            assertComplete: Effect.void,
+          },
+        });
+        const runtime = yield* adapter.openSession({
+          threadId: ThreadId.make("context-limits"),
+          providerSessionId: ProviderSessionId.make("session-context-limits"),
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+        });
+        assert.equal(
+          runtime.getModelContextWindow?.({
+            ...CLAUDE_TEST_MODEL_SELECTION,
+            model: "claude-custom-cpa",
+          }),
+          limits.expectedCapacity,
+        );
+        assert.equal(runtime.getAutoCompactThreshold?.(), 500_000);
+        if (limits.contextWindow === "") {
+          assert.isAbove(runtime.getModelContextWindow?.(CLAUDE_TEST_MODEL_SELECTION) ?? 0, 0);
+        }
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+});
+
 describe("ClaudeAdapterV2 resumeThread", () => {
   it.effect("fails for a transcript without messages so a fresh session replaces it", () =>
     Effect.scoped(

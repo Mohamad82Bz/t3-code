@@ -354,7 +354,7 @@ describe("handoff budget", () => {
         providerThread,
         nativeContextEstimate: 120_000,
       }),
-      0,
+      16_000,
     );
   });
   it("reserves context for image batches up to the attachment limit, honoring smaller known windows", () => {
@@ -365,6 +365,7 @@ describe("handoff budget", () => {
         userText: "Compare these screenshots",
         providerThread,
         nativeContextEstimate: 0,
+        modelContextWindow: 128_000,
         attachments: Array.from({ length: count }, (_, index) => ({
           type: "image",
           id: `image-${index}`,
@@ -412,6 +413,50 @@ describe("handoff budget", () => {
 });
 
 describe("handoff delivery", () => {
+  it.effect("recovers an unsent prompt at 115,761 tokens with a configured 500k threshold", () =>
+    Effect.gen(function* () {
+      let durable = handoff;
+      const budgetInput = {
+        tokenCap: 16_000,
+        userText: "Use the tested resolver and verify connectivity",
+        attachments: [],
+        providerThread: { ...providerThread, contextUsage: { usedTokens: 115_761 } },
+        nativeContextEstimate: 0,
+      };
+      assert.equal(handoffBudget(budgetInput), 16_000);
+      assert.equal(handoffBudget({ ...budgetInput, autoCompactThreshold: 500_000 }), 16_000);
+      assert.equal(handoffBudget({ ...budgetInput, modelContextWindow: 128_000 }), 0);
+      assert.equal(handoffBudget({ ...budgetInput, autoCompactThreshold: 150_000 }), 0);
+      assert.equal(
+        handoffBudget({
+          ...budgetInput,
+          modelContextWindow: 500_000,
+          providerThread: {
+            ...providerThread,
+            contextUsage: { usedTokens: 115_761, maxTokens: 128_000 },
+          },
+        }),
+        0,
+      );
+      const deliver = () =>
+        deliverContextHandoffs({
+          handoffs: [durable],
+          providerThread,
+          budget: handoffBudget({ ...budgetInput, autoCompactThreshold: 500_000 }),
+          alreadyDeliveredItemIds: new Set<string>(),
+          persist: (value) =>
+            Effect.sync(() => {
+              durable = value;
+            }),
+        });
+      const first = yield* deliver();
+      assert.include(first.context, messages[0]!.text);
+      yield* first.delivered;
+      assert.equal(durable.delivery?.status, "inline");
+      assert.equal((yield* deliver()).context, "");
+    }),
+  );
+
   it.effect.each([
     { native: true, label: "injected" },
     { native: false, label: "inline" },

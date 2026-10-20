@@ -46,7 +46,14 @@ T3 Code uses the Claude configuration on the connected server.
 Set **Auto-compact after** in the Claude provider settings to an integer between
 `100000` and `1000000`. For example, `300000` asks Claude to summarize at about
 300,000 tokens. This changes when compaction happens, not the model's context
-window. Leave it empty for Claude Code's default.
+window. Leave it empty for Claude Code's default. T3 also respects this threshold
+when budgeting recovered conversation history.
+
+For a custom model whose context capacity is not detected, set **Context window
+override** in that provider instance's settings to its maximum token count. The
+override applies to all models in the instance and does not increase their actual
+capacity. Smaller provider-reported limits still apply. With no detected limit or
+override, T3 budgets against a 1,000,000-token fallback.
 
 You can also send `/compact` in an existing conversation. Web and desktop offer
 **Compact context** from the context meter. When you return to a large thread

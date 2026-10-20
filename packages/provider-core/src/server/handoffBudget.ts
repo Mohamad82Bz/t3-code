@@ -113,12 +113,14 @@ export function handoffBudget(input: {
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly nativeContextEstimate: number;
   readonly modelContextWindow?: number | undefined;
+  readonly autoCompactThreshold?: number | undefined;
 }): number {
   const usage = input.providerThread.contextUsage;
   const window = Math.min(
-    input.modelContextWindow ?? usage?.maxTokens ?? 128_000,
+    input.modelContextWindow ?? usage?.maxTokens ?? 1_000_000,
     usage?.maxTokens ?? Infinity,
     usage?.autoCompactThreshold ?? Infinity,
+    input.autoCompactThreshold ?? Infinity,
   );
   const native = usage?.usedTokens ?? input.nativeContextEstimate;
   const current =

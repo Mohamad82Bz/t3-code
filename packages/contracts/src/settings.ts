@@ -689,6 +689,18 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    contextWindow: TrimmedString.check(Schema.isPattern(/^(?:|[1-9]\d{0,8})$/)).pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Context window override",
+        description:
+          "Maximum context tokens for this provider instance. Leave empty to detect automatically; unknown models default to 1,000,000. This does not increase the model's actual capacity.",
+        providerSettingsForm: {
+          placeholder: "e.g. 500000",
+          clearWhenEmpty: "omit",
+        },
+      }),
+    ),
     autoCompactWindow: TrimmedString.check(
       Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN),
     ).pipe(
@@ -705,7 +717,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs"],
+    order: ["binaryPath", "homePath", "contextWindow", "autoCompactWindow", "launchArgs"],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
