@@ -78,9 +78,8 @@ the dialog.
 
 ## Track subscription limits
 
-**Usage → Limits** pools every subscription account it can see per provider, so with several Codex
-or Claude accounts across your environments and hubs you read one number per window rather than a
-list. Each window card shows how much of the pool is left and a bar with one segment per account,
+**Usage → Limits** pools subscription accounts per provider. Codex credentials from CLIProxyAPI
+hubs have separate management cards; other accounts show one pooled number per window. Each window card shows how much of the pool is left and a bar with one segment per account,
 kept in the same column across windows. Accounts are ordered by their next 5-hour refill, soonest
 first. For an account with no weekly quota left, this is when its session becomes usable again.
 The first available window is used when no account reports a 5-hour limit. A gap means the
@@ -133,11 +132,24 @@ using a proxy through `ANTHROPIC_AUTH_TOKEN`.
 To see pooled accounts, open **Settings → Providers → Usage providers → Add hub**. Choose the
 environment that will connect to the hub and enter its URL and management key.
 
-The accounts appear under **Usage → Limits**. Codex accounts show banked reset credits; select an
-account and choose **Use reset** to redeem one. No hub plugin is required.
+The accounts appear under **Usage → Limits**. Codex credentials use first-letter identifiers
+(with a number when initials repeat), stay in a stable order, and group credentials with CPA
+comments on the right. Disabled credentials remain visible. Click or tap a card to enable or
+disable its credential in CPA. Provider-management permission is required.
 
-This connection supplies usage information; configure
-the provider separately to send agent requests through the hub. Remove the hub from the same
+**Start Quota** sends `say ok` through that credential's `<prefix>/gpt-6-luna` model. It temporarily
+assigns a unique prefix when needed and enables a disabled credential, then restores its original
+state even if inference fails. This makes an inference request and uses a small amount of quota;
+it does not redeem a reset credit. **Use reset** remains available for enabled accounts with
+banked credits. No hub plugin is required.
+
+If management and inference use different addresses, choose **Edit** beside the hub in
+**Settings → Providers → Usage providers** and set its inference URL. You can also supply an
+inference API key; otherwise T3 reads a client key from the management API. Both keys stay on the
+selected environment.
+
+Configure the provider separately to send agent requests through the hub; adding a usage hub
+does not change agent routing. Remove the hub from the same
 settings section when you no longer need it.
 
 ## Subscription usage widget

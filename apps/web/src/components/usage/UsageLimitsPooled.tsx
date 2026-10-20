@@ -1,6 +1,7 @@
 import {
   CHATGPT_USAGE_URL,
   collectLimitAccounts,
+  collectCodexCredentialSources,
   collectExternalUsageLinks,
   collectLimitNotices,
   collectLimitPools,
@@ -17,6 +18,7 @@ import {
 import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
 import { createContext, Fragment, type ReactNode, use, useEffect, useState } from "react";
 
+import { UsageCodexCredentials } from "./UsageCodexCredentials";
 import { ensureLocalApi } from "../../localApi";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
@@ -582,7 +584,11 @@ export function UsageLimitsPooled({
   readonly cursorPrompt?: ReactNode;
 }) {
   const [segmentPopover] = useState(() => PopoverCreateHandle<SegmentPayload>());
-  const pools = collectLimitPools(collectLimitAccounts(presentations), now);
+  const pools = collectLimitPools(
+    collectLimitAccounts(presentations, { separateCodexCredentials: true }),
+    now,
+  );
+  const hasCredentials = collectCodexCredentialSources(presentations).length > 0;
   const notices = collectLimitNotices(presentations);
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
@@ -592,7 +598,12 @@ export function UsageLimitsPooled({
     ) + 1;
   return (
     <div className="flex flex-col gap-8">
-      {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
+      <UsageCodexCredentials presentations={presentations} now={now} />
+      {pools.length === 0 &&
+      !hasCredentials &&
+      notices.length === 0 &&
+      !cursorPrompt &&
+      externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
         </p>

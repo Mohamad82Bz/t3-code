@@ -7,6 +7,8 @@ import {
   type UsageLimitSourceConfig,
   type UsageLimitSourceId,
   type UsageLimitSourceSnapshot,
+  type UsageLimitSourceAccountActionInput,
+  type UsageLimitSourceAccountActionResult,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import * as Context from "effect/Context";
@@ -30,6 +32,9 @@ export class UsageLimitSources extends Context.Service<
     readonly current: Effect.Effect<ReadonlyArray<UsageLimitSourceSnapshot>>;
     readonly streamChanges: Stream.Stream<ReadonlyArray<UsageLimitSourceSnapshot>>;
     readonly refresh: Effect.Effect<void>;
+    readonly accountAction: (
+      input: UsageLimitSourceAccountActionInput,
+    ) => Effect.Effect<UsageLimitSourceAccountActionResult, UsageLimitSourceError>;
     readonly consumeResetCredit: (
       input: UsageLimitSourceConsumeResetCreditInput,
     ) => Effect.Effect<ProviderConsumeResetCreditResult, UsageLimitSourceError>;
@@ -52,6 +57,7 @@ export const make = Effect.gen(function* () {
   const settingsService = yield* Settings.ServerSettingsService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
   const stateRef = yield* Ref.make<ReadonlyArray<UsageLimitSourceSnapshot>>([]);
+  const pendingAccounts = yield* Ref.make<ReadonlySet<string>>(new Set());
   const changes = yield* Effect.acquireRelease(
     PubSub.unbounded<ReadonlyArray<UsageLimitSourceSnapshot>>(),
     PubSub.shutdown,
@@ -122,6 +128,53 @@ export const make = Effect.gen(function* () {
       return result;
     }).pipe(refreshLock.withPermits(1));
 
+  const accountAction = (input: UsageLimitSourceAccountActionInput) => {
+    const key = `${encodeURIComponent(input.sourceId)}:${encodeURIComponent(input.accountId)}`;
+    return Effect.acquireUseRelease(
+      Ref.modify(pendingAccounts, (pending) =>
+        pending.has(key)
+          ? ([false, pending] as const)
+          : ([true, new Set([...pending, key])] as const),
+      ).pipe(
+        Effect.flatMap((acquired) =>
+          acquired
+            ? Effect.void
+            : new UsageLimitSourceError({
+                detail: "A credential action is already running for this account.",
+              }),
+        ),
+      ),
+      () =>
+        Effect.gen(function* () {
+          const settings = yield* settingsService.getSettings.pipe(
+            Effect.mapError(
+              () => new UsageLimitSourceError({ detail: "Could not read hub settings." }),
+            ),
+          );
+          const config = settings.usageLimitSources[input.sourceId];
+          if (!config?.enabled || !config.managementKey) {
+            return yield* new UsageLimitSourceError({
+              detail: "The usage limit source is missing or disabled.",
+            });
+          }
+          const result = yield* api.accountAction(config, input).pipe(Effect.result);
+          const snapshot = yield* readSource(input.sourceId, config);
+          const previous = yield* Ref.get(stateRef);
+          yield* publish(
+            previous.map((source) => (source.id === input.sourceId ? snapshot : source)),
+          );
+          if (result._tag === "Failure") return yield* result.failure;
+          return result.success;
+        }).pipe(refreshLock.withPermits(1)),
+      () =>
+        Ref.update(pendingAccounts, (pending) => {
+          const next = new Set(pending);
+          next.delete(key);
+          return next;
+        }),
+    );
+  };
+
   yield* settingsService.streamChanges.pipe(
     Stream.map((settings) => settings.usageLimitSources),
     Stream.changes,
@@ -151,6 +204,7 @@ export const make = Effect.gen(function* () {
   return {
     current: Ref.get(stateRef),
     consumeResetCredit,
+    accountAction,
     refresh,
     get streamChanges() {
       return Stream.unwrap(

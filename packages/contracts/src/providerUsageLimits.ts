@@ -72,6 +72,11 @@ export const UsageLimitSourceAccount = Schema.Struct({
   email: Schema.optional(TrimmedNonEmptyString),
   plan: Schema.optional(TrimmedNonEmptyString),
   workspaceId: Schema.optional(TrimmedNonEmptyString),
+  identifier: Schema.optional(TrimmedNonEmptyString),
+  commented: Schema.optional(Schema.Boolean),
+  disabled: Schema.optional(Schema.Boolean),
+  authIndex: Schema.optional(TrimmedNonEmptyString),
+  canManage: Schema.optional(Schema.Boolean),
   usageLimits: ServerProviderUsageLimits,
 });
 export type UsageLimitSourceAccount = typeof UsageLimitSourceAccount.Type;
@@ -96,6 +101,22 @@ export const UsageLimitSourceConsumeResetCreditInput = Schema.Struct({
 });
 export type UsageLimitSourceConsumeResetCreditInput =
   typeof UsageLimitSourceConsumeResetCreditInput.Type;
+
+export const UsageLimitSourceAccountActionInput = Schema.Struct({
+  sourceId: UsageLimitSourceId,
+  accountId: TrimmedNonEmptyString,
+  authIndex: TrimmedNonEmptyString,
+  action: Schema.Union([
+    Schema.Struct({ type: Schema.Literal("toggle"), expectedDisabled: Schema.Boolean }),
+    Schema.Struct({ type: Schema.Literal("startQuota") }),
+  ]),
+});
+export type UsageLimitSourceAccountActionInput = typeof UsageLimitSourceAccountActionInput.Type;
+
+export const UsageLimitSourceAccountActionResult = Schema.Struct({
+  message: TrimmedNonEmptyString,
+});
+export type UsageLimitSourceAccountActionResult = typeof UsageLimitSourceAccountActionResult.Type;
 
 export const ProviderConsumeResetCreditInput = Schema.Union([
   Schema.Struct({ instanceId: ProviderInstanceId }),

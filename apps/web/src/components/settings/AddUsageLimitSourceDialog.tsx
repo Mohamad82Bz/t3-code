@@ -1,4 +1,8 @@
-import { type EnvironmentId, UsageLimitSourceId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type UsageLimitSourceConfig,
+  UsageLimitSourceId,
+} from "@t3tools/contracts";
 import { useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -41,16 +45,20 @@ export function AddUsageLimitSourceDialog({
   onOpenChange,
   environmentId,
   environmentLabel,
+  source,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
+  readonly source?: { readonly id: UsageLimitSourceId; readonly config: UsageLimitSourceConfig };
 }) {
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
-  const [label, setLabel] = useState("");
-  const [url, setUrl] = useState("");
-  const [managementKey, setManagementKey] = useState("");
+  const [label, setLabel] = useState(source?.config.label ?? "");
+  const [url, setUrl] = useState(source?.config.url ?? "");
+  const [managementKey, setManagementKey] = useState(source?.config.managementKey ?? "");
+  const [inferenceUrl, setInferenceUrl] = useState(source?.config.inferenceUrl ?? "");
+  const [inferenceKey, setInferenceKey] = useState(source?.config.inferenceKey ?? "");
   const trimmedUrl = url.trim();
   const canSave = trimmedUrl.length > 0 && managementKey.trim().length > 0;
 
@@ -58,11 +66,13 @@ export function AddUsageLimitSourceDialog({
     setLabel("");
     setUrl("");
     setManagementKey("");
+    setInferenceUrl("");
+    setInferenceKey("");
   };
 
   const save = () => {
     if (!canSave) return;
-    const id = sourceIdFromUrl(trimmedUrl);
+    const id = source?.id ?? sourceIdFromUrl(trimmedUrl);
     updateSettings({
       usageLimitSources: {
         [id]: {
@@ -70,7 +80,9 @@ export function AddUsageLimitSourceDialog({
           ...(label.trim() ? { label: label.trim() } : {}),
           url: trimmedUrl,
           managementKey: managementKey.trim(),
-          enabled: true,
+          enabled: source?.config.enabled ?? true,
+          ...(inferenceUrl.trim() ? { inferenceUrl: inferenceUrl.trim() } : {}),
+          ...(inferenceKey.trim() ? { inferenceKey: inferenceKey.trim() } : {}),
         },
       },
     });
@@ -88,7 +100,7 @@ export function AddUsageLimitSourceDialog({
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add a CLIProxyAPI hub</DialogTitle>
+          <DialogTitle>{source ? "Edit CLIProxyAPI hub" : "Add a CLIProxyAPI hub"}</DialogTitle>
           <DialogDescription>
             Show the quota of every account the hub pools, next to the providers on{" "}
             {environmentLabel}. The key stays on that server.
@@ -129,6 +141,30 @@ export function AddUsageLimitSourceDialog({
                 onChange={(event) => setLabel(event.target.value)}
               />
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="usage-source-inference-url">Inference URL (optional)</Label>
+              <Input
+                id="usage-source-inference-url"
+                placeholder="Defaults to the hub URL"
+                value={inferenceUrl}
+                onChange={(event) => setInferenceUrl(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                For Start Quota when CPA management and inference use different ports.
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="usage-source-inference-key">Inference API key (optional)</Label>
+              <SecretInput
+                id="usage-source-inference-key"
+                value={inferenceKey}
+                onChange={(event) => setInferenceKey(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Otherwise Start Quota uses a client key from the hub's management API. Keys stay on{" "}
+                {environmentLabel}.
+              </p>
+            </div>
           </form>
         </DialogPanel>
         <DialogFooter variant="bare">
@@ -142,7 +178,7 @@ export function AddUsageLimitSourceDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={!canSave}>
-            Add hub
+            {source ? "Save hub" : "Add hub"}
           </Button>
         </DialogFooter>
       </DialogPopup>

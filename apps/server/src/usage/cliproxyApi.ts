@@ -4,11 +4,15 @@ import {
   type ProviderConsumeResetCreditResult,
   type UsageLimitSourceAccount,
   type UsageLimitSourceConfig,
+  type UsageLimitSourceAccountActionInput,
+  type UsageLimitSourceAccountActionResult,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import { identifyCliproxyAccounts } from "@t3tools/shared/cliproxyAccounts";
 import * as Hex from "effect/encoding/Hex";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
@@ -23,6 +27,20 @@ const AuthFile = Schema.Struct({
   auth_index: Schema.String,
   provider: Schema.String,
   email: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
+  account: Schema.optional(Schema.String),
+  label: Schema.optional(Schema.String),
+  comment: Schema.optional(Schema.String),
+  note: Schema.optional(Schema.String),
+  metadata: Schema.optional(
+    Schema.Struct({
+      comment: Schema.optional(Schema.String),
+      note: Schema.optional(Schema.String),
+    }),
+  ),
+  chatgpt_account_id: Schema.optional(Schema.String),
+  account_id: Schema.optional(Schema.String),
+  runtime_only: Schema.optional(Schema.Boolean),
   disabled: Schema.optional(Schema.Boolean),
   id_token: Schema.optional(
     Schema.Struct({
@@ -82,6 +100,19 @@ const CreditList = Schema.Struct({
   ),
 });
 
+const decodeAuthDocument = Schema.decodeUnknownEffect(
+  Schema.Struct({ prefix: Schema.optional(Schema.String) }),
+);
+const decodeClientKeys = Schema.decodeUnknownEffect(
+  Schema.Struct({ "api-keys": Schema.Array(Schema.String) }),
+);
+const decodeInferenceResponse = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    choices: Schema.NonEmptyArray(
+      Schema.Struct({ message: Schema.Record(Schema.String, Schema.Unknown) }),
+    ),
+  }),
+);
 const decodeAuthFiles = Schema.decodeUnknownEffect(AuthFiles);
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeApiResponse = Schema.decodeUnknownEffect(ApiResponse);
@@ -166,6 +197,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     config: UsageLimitSourceConfig,
     path: string,
     body?: unknown,
+    options?: { readonly method?: "PATCH"; readonly headers?: Readonly<Record<string, string>> },
   ) {
     const url = yield* Effect.try({
       try: () =>
@@ -176,8 +208,15 @@ export const makeCliproxyApi = Effect.gen(function* () {
       catch: () => new UsageLimitSourceError({ detail: "The hub URL is not valid." }),
     });
     const request = (
-      body === undefined ? HttpClientRequest.get(url) : HttpClientRequest.post(url)
-    ).pipe(HttpClientRequest.setHeader("Authorization", `Bearer ${config.managementKey}`));
+      options?.method === "PATCH"
+        ? HttpClientRequest.patch(url)
+        : body === undefined
+          ? HttpClientRequest.get(url)
+          : HttpClientRequest.post(url)
+    ).pipe(
+      HttpClientRequest.setHeader("Authorization", `Bearer ${config.managementKey}`),
+      HttpClientRequest.setHeaders(options?.headers ?? {}),
+    );
     const response = yield* client
       .execute(body === undefined ? request : request.pipe(HttpClientRequest.bodyJsonUnsafe(body)))
       .pipe(
@@ -256,6 +295,15 @@ export const makeCliproxyApi = Effect.gen(function* () {
       id: account.id,
       driver: ProviderDriverKind.make(account.provider === "codex" ? "codex" : "claudeAgent"),
       ...(account.email ? { email: account.email } : {}),
+      ...(account.provider === "codex"
+        ? {
+            disabled: account.disabled ?? false,
+            authIndex: account.auth_index,
+            canManage: Boolean(
+              account.name && !account.runtime_only && typeof account.disabled === "boolean",
+            ),
+          }
+        : {}),
       ...(account.id_token?.chatgpt_account_id?.trim()
         ? { workspaceId: account.id_token.chatgpt_account_id.trim() }
         : {}),
@@ -355,12 +403,24 @@ export const makeCliproxyApi = Effect.gen(function* () {
           : new UsageLimitSourceError({ detail: "The hub could not list accounts." }),
       ),
     );
+    const codex = identifyCliproxyAccounts(
+      accounts.filter((account) => account.provider === "codex"),
+    );
+    const visible = [
+      ...codex,
+      ...accounts.filter((account) => account.provider === "claude" && !account.disabled),
+    ];
     return yield* Effect.forEach(
-      accounts.filter(
-        (account) =>
-          !account.disabled && (account.provider === "codex" || account.provider === "claude"),
-      ),
-      (account) => readAccount(config, account),
+      visible,
+      (account) =>
+        readAccount(config, account).pipe(
+          Effect.map((result) => {
+            const identity = codex.find((entry) => entry.id === account.id);
+            return identity
+              ? { ...result, identifier: identity.identifier, commented: identity.commented }
+              : result;
+          }),
+        ),
       { concurrency: 4 },
     );
   });
@@ -417,5 +477,246 @@ export const makeCliproxyApi = Effect.gen(function* () {
       ),
     );
   });
-  return { readAccounts, consume };
+  const accountAction = Effect.fn("CliproxyApi.accountAction")(function* (
+    config: UsageLimitSourceConfig,
+    input: UsageLimitSourceAccountActionInput,
+  ): Effect.fn.Return<UsageLimitSourceAccountActionResult, UsageLimitSourceError> {
+    const operation = Effect.gen(function* () {
+      const files = yield* authFiles(config);
+      const findTarget = (entries: readonly (typeof AuthFile.Type)[]) =>
+        Effect.gen(function* () {
+          const matches = entries.filter((entry) => entry.auth_index === input.authIndex);
+          const file = matches[0];
+          if (
+            matches.length !== 1 ||
+            !file ||
+            file.id !== input.accountId ||
+            file.provider !== "codex" ||
+            file.runtime_only ||
+            !file.name ||
+            typeof file.disabled !== "boolean"
+          ) {
+            return yield* new UsageLimitSourceError({
+              detail:
+                "The Codex credential changed or cannot be managed safely. Refresh and try again.",
+            });
+          }
+          return file;
+        });
+      const file = yield* findTarget(files);
+      const accountId = (entry: typeof AuthFile.Type) =>
+        entry.id_token?.chatgpt_account_id ?? entry.chatgpt_account_id ?? entry.account_id ?? "";
+      const snapshot = (entry: typeof AuthFile.Type) => entry.account || entry.email || "";
+      const currentTarget = Effect.gen(function* () {
+        const current = yield* findTarget(yield* authFiles(config));
+        if (
+          current.name !== file.name ||
+          accountId(current) !== accountId(file) ||
+          snapshot(current) !== snapshot(file)
+        ) {
+          return yield* new UsageLimitSourceError({
+            detail: "The Codex credential identity changed. Refresh and try again.",
+          });
+        }
+        return current;
+      });
+      const setDisabled = (expectedDisabled: boolean) =>
+        Effect.gen(function* () {
+          const current = yield* currentTarget;
+          if (current.disabled !== expectedDisabled) {
+            return yield* new UsageLimitSourceError({
+              detail: "The credential state changed. Refresh and try again.",
+            });
+          }
+          yield* management(
+            config,
+            "auth-files/status",
+            {
+              name: file.id,
+              disabled: !expectedDisabled,
+              auth_index: file.auth_index,
+              cpamp_physical_name: file.name,
+              cpamp_runtime_id: file.id,
+              cpamp_provider: "codex",
+              ...(accountId(file) ? { cpamp_account_id: accountId(file) } : {}),
+              ...(snapshot(file) ? { cpamp_account_snapshot: snapshot(file) } : {}),
+            },
+            { method: "PATCH" },
+          );
+          if ((yield* currentTarget).disabled !== !expectedDisabled) {
+            return yield* new UsageLimitSourceError({
+              detail: "CPA did not confirm the credential status. Refresh to check.",
+            });
+          }
+        });
+      if (input.action.type === "toggle") {
+        yield* setDisabled(input.action.expectedDisabled);
+        return {
+          message: input.action.expectedDisabled ? "Credential enabled." : "Credential disabled.",
+        };
+      }
+
+      const document = (entry: typeof AuthFile.Type) =>
+        Effect.gen(function* () {
+          if (!entry.name)
+            return yield* new UsageLimitSourceError({
+              detail: "A Codex credential has no physical file name.",
+            });
+          const body = yield* management(
+            config,
+            `auth-files/download?name=${encodeURIComponent(entry.name)}`,
+          );
+          return yield* decodeAuthDocument(body);
+        });
+      const stored = yield* document(file);
+      const identifier = identifyCliproxyAccounts(
+        files.filter((entry) => entry.provider === "codex"),
+      ).find((entry) => entry.id === file.id)!.identifier;
+      const prefix = stored.prefix?.trim() || identifier.toLowerCase();
+      if (!stored.prefix?.trim() && !/^[a-z0-9]+$/.test(prefix)) {
+        return yield* new UsageLimitSourceError({
+          detail: "The account identifier cannot be used as a routing prefix.",
+        });
+      }
+      // Disabled accounts also participate in prefix routing when temporarily enabled.
+      for (const other of files.filter(
+        (entry) => entry.provider === "codex" && entry.name !== file.name,
+      )) {
+        if ((yield* document(other)).prefix?.trim() === prefix) {
+          return yield* new UsageLimitSourceError({ detail: "The account prefix is not unique." });
+        }
+      }
+      const inferenceUrl = yield* Effect.try({
+        try: () => {
+          const url = new URL(config.inferenceUrl ?? config.url);
+          if (
+            !["http:", "https:"].includes(url.protocol) ||
+            url.username ||
+            url.password ||
+            url.search ||
+            url.hash
+          )
+            throw new Error();
+          return new URL(
+            "v1/chat/completions",
+            url.href.endsWith("/") ? url.href : `${url.href}/`,
+          ).toString();
+        },
+        catch: () => new UsageLimitSourceError({ detail: "The inference URL is not valid." }),
+      });
+      let clientKey = config.inferenceKey?.trim();
+      if (!clientKey) {
+        const response = yield* management(config, "api-keys");
+        const keys = yield* decodeClientKeys(response);
+        clientKey = keys["api-keys"].find((key) => key.trim())?.trim();
+      }
+      if (!clientKey)
+        return yield* new UsageLimitSourceError({
+          detail: "Configure an inference API key for Start Quota.",
+        });
+      const identity = [
+        {
+          name: file.name,
+          runtimeId: file.id,
+          authIndex: file.auth_index,
+          provider: "codex",
+          accountId: accountId(file),
+          accountSnapshot: snapshot(file),
+        },
+      ];
+      const identityHeader = encodeURIComponent(yield* encodeJson(identity));
+      const patchPrefix = (value: string) =>
+        Effect.gen(function* () {
+          yield* management(
+            config,
+            "auth-files/fields",
+            { name: file.id, prefix: value },
+            {
+              method: "PATCH",
+              headers: { "X-CPAMP-Auth-File-Mutation-Identity": identityHeader },
+            },
+          );
+          if (((yield* document(file)).prefix ?? "").trim() !== value) {
+            return yield* new UsageLimitSourceError({
+              detail: "The credential prefix was not saved.",
+            });
+          }
+        });
+      let prefixAttempted = false;
+      let enableAttempted = false;
+      const result = yield* Effect.gen(function* () {
+        if (!stored.prefix?.trim()) {
+          prefixAttempted = true;
+          yield* patchPrefix(prefix);
+        }
+        if (file.disabled) {
+          enableAttempted = true;
+          yield* setDisabled(true);
+        }
+        if ((yield* currentTarget).disabled) {
+          return yield* new UsageLimitSourceError({
+            detail: "The credential was disabled before inference.",
+          });
+        }
+        const response = yield* client
+          .execute(
+            HttpClientRequest.post(inferenceUrl).pipe(
+              HttpClientRequest.setHeader("Authorization", `Bearer ${clientKey}`),
+              HttpClientRequest.bodyJsonUnsafe({
+                model: `${prefix}/gpt-6-luna`,
+                messages: [{ role: "user", content: "say ok" }],
+                stream: false,
+              }),
+            ),
+          )
+          .pipe(
+            Effect.flatMap(HttpClientResponse.filterStatusOk),
+            Effect.flatMap((response) => response.json),
+            Effect.timeout("90 seconds"),
+            Effect.mapError(
+              () =>
+                new UsageLimitSourceError({
+                  detail:
+                    "The quota-start inference failed. Check the hub's inference URL and API key.",
+                }),
+            ),
+          );
+        yield* decodeInferenceResponse(response);
+        return { message: "Quota started. Original credential state restored." };
+      }).pipe(Effect.exit);
+      // Restoration must finish even if the client disconnects or inference fails.
+      const restoredStatus = yield* Effect.gen(function* () {
+        if (enableAttempted && !(yield* currentTarget).disabled) yield* setDisabled(false);
+      }).pipe(Effect.retry({ times: 2 }), Effect.exit);
+      const restoredPrefix = yield* Effect.gen(function* () {
+        if (!prefixAttempted) return;
+        yield* currentTarget;
+        const held = (yield* document(file)).prefix?.trim();
+        if (held && held !== prefix) {
+          return yield* new UsageLimitSourceError({
+            detail: "The credential prefix changed during inference.",
+          });
+        }
+        if (held) yield* patchPrefix("");
+      }).pipe(Effect.retry({ times: 2 }), Effect.exit);
+      if (Exit.isFailure(restoredStatus) || Exit.isFailure(restoredPrefix)) {
+        return yield* new UsageLimitSourceError({
+          detail:
+            "Start Quota could not restore the original credential state. Check its enabled status and prefix in CPA.",
+        });
+      }
+      return yield* result;
+    });
+    return yield* operation.pipe(
+      Effect.uninterruptible,
+      Effect.mapError((error) =>
+        isUsageLimitSourceError(error)
+          ? error
+          : new UsageLimitSourceError({
+              detail: "CPA returned an unexpected credential response.",
+            }),
+      ),
+    );
+  });
+  return { readAccounts, consume, accountAction };
 });

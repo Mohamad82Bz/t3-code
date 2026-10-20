@@ -14,6 +14,7 @@ import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
   collectLimitAccounts,
+  collectCodexCredentialSources,
   collectExternalUsageLinks,
   collectLimitNotices,
   collectLimitPools,
@@ -169,6 +170,45 @@ describe("pools", () => {
     checkedAt,
   };
   const laptop = { entry: { target: { label: "Laptop" } } };
+
+  it("keeps disabled and unreadable CPA cards manageable without counting them in pooled allowance", () => {
+    const accounts = [
+      {
+        id: "disabled",
+        driver: ProviderDriverKind.make("codex"),
+        identifier: "A",
+        disabled: true,
+        usageLimits: { checkedAt, windows: [window] },
+      },
+      {
+        id: "unreadable",
+        driver: ProviderDriverKind.make("codex"),
+        identifier: "B",
+        usageLimits: { checkedAt, windows: [], unavailable: { reason: "probeFailed" as const } },
+      },
+      {
+        id: "enabled",
+        driver: ProviderDriverKind.make("codex"),
+        identifier: "C",
+        usageLimits: { checkedAt, windows: [window] },
+      },
+    ];
+    const selected = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          ...laptop,
+          serverConfig: { providers: [], usageLimitSources: [{ ...source, accounts }] },
+        },
+      ],
+    ]);
+    expect(
+      collectCodexCredentialSources(selected)[0]?.accounts.map((account) => account.id),
+    ).toEqual(["disabled", "unreadable", "enabled"]);
+    expect(collectLimitAccounts(selected).map((account) => account.key)).toEqual(["hub:enabled"]);
+    expect(collectLimitAccounts(selected, { separateCodexCredentials: true })).toEqual([]);
+    expect(collectCodexCredentialSources(new Map())).toEqual([]);
+  });
 
   it("merges one account reported natively on two environments and by a hub into one entry", () => {
     const native = provider({

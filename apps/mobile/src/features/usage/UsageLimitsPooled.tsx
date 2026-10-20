@@ -3,6 +3,7 @@ import { useNavigation, type StaticScreenProps } from "@react-navigation/native"
 import { EnvironmentId } from "@t3tools/contracts";
 import {
   collectLimitAccounts,
+  collectCodexCredentialSources,
   collectExternalUsageLinks,
   collectLimitNotices,
   collectLimitPools,
@@ -24,6 +25,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { environmentPresentations } from "../../state/presentation";
+import { UsageCodexCredentials } from "./UsageCodexCredentials";
 import { ResetCredits } from "./UsageLimitsSection";
 import { usageProviderKind, useProviderColors } from "./usageProviders";
 
@@ -261,7 +263,11 @@ export function UsageLimitsSection({
     selectedEnvironmentIds === null
       ? presentations
       : new Map([...presentations].filter(([id]) => selectedEnvironmentIds.has(id)));
-  const pools = collectLimitPools(collectLimitAccounts(selected), now);
+  const pools = collectLimitPools(
+    collectLimitAccounts(selected, { separateCodexCredentials: true }),
+    now,
+  );
+  const hasCredentials = collectCodexCredentialSources(selected).length > 0;
   const notices = collectLimitNotices(selected);
   const externalLinks = collectExternalUsageLinks(selected);
   const colors = useProviderColors();
@@ -272,7 +278,9 @@ export function UsageLimitsSection({
     ) + 1;
   return (
     <View className="gap-6">
+      <UsageCodexCredentials presentations={selected} now={now} />
       {pools.length === 0 &&
+      !hasCredentials &&
       notices.length === 0 &&
       failedLabels.length === 0 &&
       !cursorPrompt &&

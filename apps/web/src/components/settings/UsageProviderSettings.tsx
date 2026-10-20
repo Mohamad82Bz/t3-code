@@ -1,4 +1,4 @@
-import type { EnvironmentId, UnifiedSettings } from "@t3tools/contracts";
+import { UsageLimitSourceId, type EnvironmentId, type UnifiedSettings } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { PlusIcon } from "lucide-react";
 import { useState } from "react";
@@ -44,6 +44,7 @@ export function UsageProviderSettings({
   const platform = useAtomValue(serverEnvironment.configValueAtom(environmentId))?.environment
     .platform;
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<UsageLimitSourceId | null>(null);
   const [updatingCursor, setUpdatingCursor] = useState(false);
   const entries = Object.entries(sources);
 
@@ -104,10 +105,19 @@ export function UsageProviderSettings({
                 }
                 control={
                   !readOnly ? (
-                    <RemoveUsageProviderButton
-                      label={label}
-                      onConfirm={() => updateSettings({ usageLimitSources: { [id]: null } })}
-                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => setEditing(UsageLimitSourceId.make(id))}
+                      >
+                        Edit
+                      </Button>
+                      <RemoveUsageProviderButton
+                        label={label}
+                        onConfirm={() => updateSettings({ usageLimitSources: { [id]: null } })}
+                      />
+                    </div>
                   ) : null
                 }
               />
@@ -115,6 +125,15 @@ export function UsageProviderSettings({
           })
         )}
       </SettingsSection>
+      {editing && sources[editing] && !readOnly ? (
+        <AddUsageLimitSourceDialog
+          open
+          onOpenChange={() => setEditing(null)}
+          environmentId={environmentId}
+          environmentLabel={environmentLabel}
+          source={{ id: UsageLimitSourceId.make(editing), config: sources[editing] }}
+        />
+      ) : null}
       {adding && !readOnly ? (
         <AddUsageLimitSourceDialog
           open

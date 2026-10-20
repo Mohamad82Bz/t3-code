@@ -1523,6 +1523,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
               kind: "cliproxy",
               url: "https://hub.example.test",
               managementKey: "quota-secret",
+              inferenceUrl: "https://inference.example.test",
+              inferenceKey: "quota-inference-secret",
               enabled: true,
             },
           },
@@ -1534,6 +1536,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           "bitbucket-secret",
           "gitcafe-secret",
           "quota-secret",
+          "quota-inference-secret",
         ];
         const client = ServerSettingsModule.redactServerSettingsForClient(saved);
         const disk = yield* fs.readFileString(config.settingsPath);
@@ -1597,6 +1600,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           }),
           sourceControlHostSecretName({ kind: "gitcafe", field: "token", serverHost: null }),
           "usage-limit-source-aHVi",
+          "usage-limit-source-aHVi-aW5mZXJlbmNlS2V5",
         ];
         for (const name of secretNames) {
           assert.isTrue(Option.isSome(yield* store.get(name)), name);

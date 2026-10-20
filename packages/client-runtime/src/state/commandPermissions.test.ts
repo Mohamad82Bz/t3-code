@@ -9,6 +9,7 @@ import { vi } from "vite-plus/test";
 import {
   AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
+  AuthProvidersManageScope,
   AuthSourceControlWriteScope,
   ThreadId,
   EnvironmentId,
@@ -59,6 +60,37 @@ const setup = Effect.gen(function* () {
 });
 
 describe("command permissions", () => {
+  it.effect(
+    "requires provider-management permission on the destination to mutate CPA credentials",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* setup;
+          const cpa = createCommandPermissions(runtime, WS_METHODS.usageLimitSourceAccountAction);
+          registry.set(sessions(env), AsyncResult.success(grant(true)));
+          expect(registry.get(cpa.permissionAtom(env))).toBe(false);
+          expect((yield* cpa.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+            AuthProvidersManageScope,
+          );
+          registry.set(
+            sessions(env),
+            AsyncResult.success({
+              ...grant(false),
+              scopes: [AuthProvidersManageScope],
+              permissions: [AuthProvidersManageScope],
+            }),
+          );
+          expect(registry.get(cpa.permissionAtom(env))).toBe(true);
+          yield* cpa.authorize(registry, env);
+          registry.set(sessions(other), AsyncResult.success(grant(false)));
+          expect(registry.get(cpa.permissionAtom(other))).toBe(false);
+          registry.set(sessions(env), AsyncResult.success(grant(false)));
+          expect((yield* cpa.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+        }),
+      ),
+  );
   it.effect("requires the destination settings grant to run storage cleanup", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -383,11 +383,14 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  it.effect("skips disabled accounts and rejects redemption on them", () =>
+  it.effect("keeps disabled Codex accounts visible but rejects redemption on them", () =>
     Effect.gen(function* () {
       const test = fixture({ accounts: [{ ...accounts[0]!, disabled: true }] });
       const api = yield* test.api;
-      expect(yield* api.readAccounts(config)).toEqual([]);
+      expect(yield* api.readAccounts(config)).toMatchObject([
+        { id: "first.json", disabled: true, identifier: "F" },
+      ]);
+      test.requests.length = 0;
       expect((yield* api.consume(config, "first.json", "credit").pipe(Effect.result))._tag).toBe(
         "Failure",
       );

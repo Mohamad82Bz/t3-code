@@ -166,7 +166,23 @@ export interface LimitAccount {
   readonly limits: ServerProviderUsageLimits;
 }
 
-export function collectLimitAccounts(presentations: LimitPresentations): readonly LimitAccount[] {
+export function collectCodexCredentialSources(presentations: LimitPresentations) {
+  return [...presentations].flatMap(([environmentId, presentation]) =>
+    (presentation.serverConfig?.usageLimitSources ?? []).flatMap((source) => {
+      const accounts = source.accounts.filter(
+        (account) => account.driver === "codex" && account.identifier,
+      );
+      return accounts.length
+        ? [{ environmentId, environmentLabel: presentation.entry.target.label, source, accounts }]
+        : [];
+    }),
+  );
+}
+
+export function collectLimitAccounts(
+  presentations: LimitPresentations,
+  options?: { readonly separateCodexCredentials?: boolean },
+): readonly LimitAccount[] {
   const accounts = new Map<string, LimitAccount>();
   const creditSources = new Map<string, LimitAccount>();
   const hubRedeems = new Map<string, LimitAccount>();
@@ -258,6 +274,11 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         ? `${presentation.entry.target.label} · ${source.label}`
         : source.label;
       for (const account of source.accounts) {
+        if (
+          account.disabled ||
+          (options?.separateCodexCredentials && account.driver === "codex" && account.identifier)
+        )
+          continue;
         if (limitsNotice(account.usageLimits) !== null) continue;
         const key = `${source.id}:${account.id}${account.workspaceId ? `:${account.workspaceId}` : ""}`;
         merge(resolveKey(account) ?? key, {

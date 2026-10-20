@@ -804,6 +804,8 @@ export const UsageLimitSourceConfig = Schema.Struct({
   label: Schema.optional(TrimmedNonEmptyString),
   url: TrimmedNonEmptyString,
   managementKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("")), secretSetting),
+  inferenceUrl: Schema.optional(TrimmedNonEmptyString),
+  inferenceKey: Schema.optional(TrimmedString).pipe(secretSetting),
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type UsageLimitSourceConfig = typeof UsageLimitSourceConfig.Type;

@@ -89,6 +89,12 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("requires provider-management permission to change CPA credentials or start quota", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.usageLimitSourceAccountAction)).toBe(
+      AuthProvidersManageScope,
+    );
+  });
+
   it("separates ACP Registry discovery from provisioning", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.serverSearchAcpRegistry)).toBe(
       AuthOrchestrationReadScope,

@@ -1141,6 +1141,15 @@ export function createServerEnvironmentAtoms<R, E>(
           ),
         ),
     }),
+    usageLimitSourceAccountAction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:usage-limit-source-account-action",
+      tag: WS_METHODS.usageLimitSourceAccountAction,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.sourceId, input.accountId]),
+      },
+    }),
     consumeResetCredit: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:consume-reset-credit",
       tag: WS_METHODS.providerConsumeResetCredit,
