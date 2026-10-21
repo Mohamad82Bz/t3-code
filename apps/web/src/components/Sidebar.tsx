@@ -280,6 +280,7 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
+import { SidebarThreadSpectators } from "./sidebar/SidebarThreadSpectators";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -2148,6 +2149,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {draftIndicator}
             {title}
             {pinIndicator}
+            <SidebarThreadSpectators environmentId={thread.environmentId} threadId={thread.id} />
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
@@ -2486,6 +2488,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : (
                 <span className="flex-1" />
               )}
+              <SidebarThreadSpectators environmentId={thread.environmentId} threadId={thread.id} />
               {terminalStatusIcon}
               {prBadge}
               {diff ? (
@@ -2666,6 +2669,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
               >
                 {thread.title}
               </span>
+              <SidebarThreadSpectators environmentId={thread.environmentId} threadId={thread.id} />
               <span id={`${props.resultId}-pr`} className="contents">
                 <ThreadSearchPullRequestNumber
                   thread={thread}

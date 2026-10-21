@@ -5,10 +5,12 @@ machine. That machine must stay running and reachable while you work.
 
 ## Session spectators
 
-When you open a thread on another environment, its viewers can see your machine
-as a spectator, including you. Viewing a thread on your own environment does not
-add you. Spectators leave when they switch threads, hide the app, or disconnect;
-multiple windows from the same environment count once.
+The sidebar shows who is viewing each session across your connected environments,
+without opening the session first. This includes you on your own environment and
+visitors on remote environments. Hover a chip to see everyone viewing that session.
+The composer shows the same viewers for the open session. Spectators leave when
+they switch threads, hide the app, or disconnect; multiple windows from the same
+environment count once.
 
 Presence is cosmetic, not a verified identity or permission to control the thread.
 It uses your primary environment's name and machine icon, with known machines

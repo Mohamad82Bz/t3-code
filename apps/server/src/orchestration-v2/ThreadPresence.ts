@@ -1,6 +1,7 @@
 import type {
   SubscribeThreadPresenceInput,
   ThreadId,
+  ThreadPresenceSnapshot,
   ThreadSpectator,
   ThreadSpectators,
 } from "@t3tools/contracts";
@@ -12,19 +13,17 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
-import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-
 export class ThreadPresence extends Context.Service<
   ThreadPresence,
   {
     readonly subscribe: (input: SubscribeThreadPresenceInput) => Stream.Stream<ThreadSpectators>;
+    readonly observe: () => Stream.Stream<ThreadPresenceSnapshot>;
   }
 >()("t3/orchestration-v2/ThreadPresence") {}
 
 const make = Effect.gen(function* () {
-  const environment = yield* ServerEnvironment.ServerEnvironment;
-  const hostId = yield* environment.getEnvironmentId;
   const mutex = yield* Semaphore.make(1);
+  const snapshot = yield* SubscriptionRef.make<ThreadPresenceSnapshot>([]);
   const threads = new Map<
     ThreadId,
     {
@@ -41,9 +40,15 @@ const make = Effect.gen(function* () {
     const next = [...byEnvironment.values()].sort((a, b) =>
       a.environmentId.localeCompare(b.environmentId),
     );
-    if (!Equal.equals(yield* SubscriptionRef.get(entry.spectators), next)) {
-      yield* SubscriptionRef.set(entry.spectators, next);
+    if (Equal.equals(yield* SubscriptionRef.get(entry.spectators), next)) return;
+    yield* SubscriptionRef.set(entry.spectators, next);
+    const all: Array<ThreadPresenceSnapshot[number]> = [];
+    for (const [threadId, thread] of threads) {
+      const spectators = yield* SubscriptionRef.get(thread.spectators);
+      if (spectators.length > 0) all.push({ threadId, spectators });
     }
+    all.sort((a, b) => a.threadId.localeCompare(b.threadId));
+    yield* SubscriptionRef.set(snapshot, all);
   });
 
   const subscribe = (input: SubscribeThreadPresenceInput) =>
@@ -61,10 +66,7 @@ const make = Effect.gen(function* () {
                 };
                 threads.set(input.threadId, entry);
               }
-              entry.views.set(
-                viewId,
-                input.spectator?.environmentId === hostId ? undefined : input.spectator,
-              );
+              entry.views.set(viewId, input.spectator);
               yield* publish(entry);
               return entry;
             }),
@@ -73,8 +75,8 @@ const make = Effect.gen(function* () {
             mutex.withPermits(1)(
               Effect.gen(function* () {
                 entry.views.delete(viewId);
+                yield* publish(entry);
                 if (entry.views.size === 0) threads.delete(input.threadId);
-                else yield* publish(entry);
               }),
             ),
         );
@@ -82,7 +84,7 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  return ThreadPresence.of({ subscribe });
+  return ThreadPresence.of({ subscribe, observe: () => SubscriptionRef.changes(snapshot) });
 });
 
 export const layer = Layer.effect(ThreadPresence, make);

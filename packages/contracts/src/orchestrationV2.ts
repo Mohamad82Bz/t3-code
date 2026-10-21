@@ -1,5 +1,9 @@
 import { OrchestrationMessageContext } from "./composerContext.ts";
-import { SubscribeThreadPresenceInput, ThreadSpectators } from "./threadPresence.ts";
+import {
+  SubscribeThreadPresenceInput,
+  ThreadPresenceSnapshot,
+  ThreadSpectators,
+} from "./threadPresence.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaAST from "effect/SchemaAST";
@@ -3074,6 +3078,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
   subscribeThreadPresence: "orchestration.subscribeThreadPresence",
+  subscribeThreadPresenceOverview: "orchestration.subscribeThreadPresenceOverview",
   subscribeCommandOutput: "orchestration.subscribeCommandOutput",
 } as const;
 
@@ -3592,6 +3597,10 @@ export const OrchestrationV2RpcSchemas = {
   subscribeThreadPresence: {
     input: SubscribeThreadPresenceInput,
     output: ThreadSpectators,
+  },
+  subscribeThreadPresenceOverview: {
+    input: Schema.Struct({}),
+    output: ThreadPresenceSnapshot,
   },
   subscribeCommandOutput: {
     input: OrchestrationV2SubscribeCommandOutputInput,

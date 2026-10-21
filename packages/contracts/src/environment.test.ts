@@ -16,6 +16,13 @@ const descriptor = {
 describe("ExecutionEnvironmentDescriptor", () => {
   it("keeps spectator presence optional for stock servers", () => {
     expect(decodeDescriptor(descriptor).capabilities.threadPresence).toBeUndefined();
+    expect(decodeDescriptor(descriptor).capabilities.threadPresenceOverview).toBeUndefined();
+    expect(
+      decodeDescriptor({
+        ...descriptor,
+        capabilities: { ...descriptor.capabilities, threadPresenceOverview: true },
+      }).capabilities.threadPresenceOverview,
+    ).toBe(true);
     expect(
       decodeDescriptor({
         ...descriptor,

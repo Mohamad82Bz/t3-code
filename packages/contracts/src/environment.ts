@@ -146,6 +146,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       which never send command output, so clients must not subscribe. */
   commandOutputStreaming: Schema.optionalKey(Schema.Boolean),
   threadPresence: Schema.optionalKey(Schema.Boolean),
+  threadPresenceOverview: Schema.optionalKey(Schema.Boolean),
   /** Server hosts preview tabs in its own headless Chromium (`runtime:
       "server"`) and streams them over `/api/preview-stream`. Clients
       without a local browser runtime open server tabs here. */

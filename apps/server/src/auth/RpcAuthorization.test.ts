@@ -40,6 +40,9 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresence)).toBe(
       AuthOrchestrationReadScope,
     );
+    expect(
+      requiredScopeForRpcMethod(ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresenceOverview),
+    ).toBe(AuthOrchestrationReadScope);
   });
 
   it("requires operate access to stop a workflow", () => {

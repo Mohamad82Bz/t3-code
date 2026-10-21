@@ -1724,6 +1724,16 @@ const WsOrchestrationV2SubscribeThreadPresenceRpc = Rpc.make(
   },
 );
 
+const WsOrchestrationV2SubscribeThreadPresenceOverviewRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresenceOverview,
+  {
+    payload: OrchestrationV2RpcSchemas.subscribeThreadPresenceOverview.input,
+    success: OrchestrationV2RpcSchemas.subscribeThreadPresenceOverview.output,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
 const WsOrchestrationV2SubscribeCommandOutputRpc = Rpc.make(
   ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput,
   {
@@ -2068,5 +2078,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,
   WsOrchestrationV2SubscribeThreadPresenceRpc,
+  WsOrchestrationV2SubscribeThreadPresenceOverviewRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
 ).middleware(RpcScopeAuthorization);

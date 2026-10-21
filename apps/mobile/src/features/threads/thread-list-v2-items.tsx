@@ -56,6 +56,7 @@ import {
   type ThreadListV2Status,
 } from "./threadListV2";
 import { QueuedMessageIcon } from "./queued-message-icon";
+import { SidebarThreadSpectators } from "./SidebarThreadSpectators";
 import { shouldRecedeThreadRow } from "./thread-row-emphasis";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -1108,6 +1109,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             </Text>
           </Pressable>
         ) : null}
+        <SidebarThreadSpectators environmentId={thread.environmentId} threadId={thread.id} />
         {providerInstance ? (
           <View className="flex-row items-center">
             {providerDrivers.slice(0, -1).map((driver, index) => (
@@ -1228,6 +1230,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ) : null}
           </View>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+          <SidebarThreadSpectators environmentId={thread.environmentId} threadId={thread.id} />
           <Text
             className={cn(
               "text-sm tabular-nums",

@@ -2026,6 +2026,8 @@ const layerWsRpc = (
           ),
         [ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresence]: (input) =>
           threadPresence.subscribe(input),
+        [ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresenceOverview]: () =>
+          threadPresence.observe(),
         [ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput]: (input) =>
           Stream.unwrap(
             Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
