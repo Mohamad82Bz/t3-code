@@ -281,6 +281,7 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { SidebarThreadSpectators } from "./sidebar/SidebarThreadSpectators";
+import { SidebarEnvironmentFilter } from "./sidebar/SidebarEnvironmentFilter";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -367,6 +368,7 @@ const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
 
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
+const EXCLUDED_ENVIRONMENT_IDS_SCHEMA = Schema.Array(Schema.String);
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
@@ -387,6 +389,7 @@ type SidebarOptimisticDrop = {
 interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly scopedProjectKeys: ReadonlySet<string> | null;
+  readonly excludedEnvironmentIds: readonly string[];
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
@@ -449,12 +452,19 @@ function routeThreadOnly(
 function useSidebarThreads(input: {
   readonly projectScopeKey: string | null;
   readonly scopedProjectKeys: ReadonlySet<string> | null;
+  readonly excludedEnvironmentIds: readonly string[];
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly routeThreadRef: ScopedThreadRef | null;
 }) {
-  const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
-    input;
+  const {
+    projectScopeKey,
+    scopedProjectKeys,
+    excludedEnvironmentIds,
+    serverConfigs,
+    optimisticDrop,
+    routeThreadRef,
+  } = input;
   const threads = useThreadShells();
   const routeRowThreadKey =
     routeThreadRef === null
@@ -508,6 +518,7 @@ function useSidebarThreads(input: {
   const partition = partitionSidebarThreads({
     threads,
     scopedProjectKeys,
+    excludedEnvironmentIds,
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
@@ -600,9 +611,16 @@ function useSidebarThreads(input: {
 }
 
 function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
-  const { threads, scopedProjectKeys, serverConfigs, optimisticDrop, workingShelfEnabled } = input;
+  const {
+    threads,
+    scopedProjectKeys,
+    excludedEnvironmentIds,
+    serverConfigs,
+    optimisticDrop,
+    workingShelfEnabled,
+  } = input;
   const preciseNow = new Date().toISOString();
-  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys);
+  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys, excludedEnvironmentIds);
   inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
@@ -1430,6 +1448,7 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   projectByKey: ReadonlyMap<string, EnvironmentProject>;
   projectDisplayNameByKey: ReadonlyMap<string, string>;
   scopedProjectKeys: ReadonlySet<string> | null;
+  excludedEnvironmentIds: readonly string[];
   routeDraftId: string | null;
   onNavigateToDraft: (draftId: DraftId) => void;
   onDraftContextMenu: (draftId: DraftId, position: { x: number; y: number }) => void;
@@ -1460,8 +1479,9 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
         continue;
       }
       if (
-        props.scopedProjectKeys !== null &&
-        !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
+        props.excludedEnvironmentIds.includes(session.environmentId) ||
+        (props.scopedProjectKeys !== null &&
+          !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`))
       ) {
         continue;
       }
@@ -2818,6 +2838,11 @@ export default function Sidebar() {
   );
   const environmentMachineById = useEnvironmentMachines();
   const projectGroupsRef = useRef(projectGroups);
+  const [excludedEnvironmentIds, setExcludedEnvironmentIds] = useLocalStorage(
+    "t3code:sidebar-excluded-environment-ids:v1",
+    [] as readonly string[],
+    EXCLUDED_ENVIRONMENT_IDS_SCHEMA,
+  );
   const persistedProjectScopeKey = useUiStateStore((store) => store.sidebarProjectScopeKey);
   const setPersistedProjectScopeKey = useUiStateStore((store) => store.setSidebarProjectScopeKey);
   const [projectScopeMenuState, dispatchProjectScopeMenu] = useReducer(
@@ -2839,7 +2864,9 @@ export default function Sidebar() {
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [searchHighlight, setSearchHighlight] = useState({ orderKey: "", index: 0 });
-  const searchEnvironmentIds = useConnectedEnvironmentIds();
+  const searchEnvironmentIds = useConnectedEnvironmentIds().filter(
+    (id) => !excludedEnvironmentIds.includes(id),
+  );
   const threadSearch = useThreadSearch(searchEnvironmentIds, threadSearchQuery);
   const handleNewThreadRef = useRef(newThreadContext.handleNewThread);
   const queuePendingFileDrop = useSidebarPendingFileDropStore((s) => s.queuePendingFileDrop);
@@ -2949,8 +2976,9 @@ export default function Sidebar() {
         continue;
       }
       if (
-        scopedProjectKeys !== null &&
-        !scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
+        excludedEnvironmentIds.includes(session.environmentId) ||
+        (scopedProjectKeys !== null &&
+          !scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`))
       ) {
         continue;
       }
@@ -3027,6 +3055,7 @@ export default function Sidebar() {
   } = useSidebarThreads({
     projectScopeKey,
     scopedProjectKeys,
+    excludedEnvironmentIds,
     serverConfigs,
     optimisticDrop,
     routeThreadRef,
@@ -4566,6 +4595,15 @@ export default function Sidebar() {
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
+              environmentScope={
+                <SidebarEnvironmentFilter
+                  excludedEnvironmentIds={excludedEnvironmentIds}
+                  onExcludedEnvironmentIdsChange={(ids) => {
+                    clearSelection();
+                    setExcludedEnvironmentIds(ids);
+                  }}
+                />
+              }
               projectScope={
                 <Combobox
                   items={projectScopeItems}
@@ -4928,6 +4966,7 @@ export default function Sidebar() {
                           projectByKey={projectByKey}
                           projectDisplayNameByKey={projectDisplayNameByKey}
                           scopedProjectKeys={scopedProjectKeys}
+                          excludedEnvironmentIds={excludedEnvironmentIds}
                           routeDraftId={routeDraftIdForRows}
                           onNavigateToDraft={navigateToDraft}
                           onDraftContextMenu={handleDraftContextMenu}

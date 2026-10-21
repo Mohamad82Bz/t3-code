@@ -448,6 +448,31 @@ describe("sidebar thread lineage helpers", () => {
     ).toEqual([parentId, fork.id]);
   });
 
+  it("intersects environment exclusions with project scope and restores all environments", () => {
+    const localId = EnvironmentId.make("local");
+    const remoteId = EnvironmentId.make("remote");
+    const thirdId = EnvironmentId.make("third");
+    const projectId = ProjectId.make("shared-project-id");
+    const threads = [localId, remoteId, thirdId].map((environmentId) =>
+      makeThreadFixture({ environmentId, projectId }),
+    );
+    const scope = new Set([`${localId}:${projectId}`, `${remoteId}:${projectId}`]);
+
+    expect(filterSidebarV2VisibleThreads(threads, null, []).map((t) => t.environmentId)).toEqual([
+      localId,
+      remoteId,
+      thirdId,
+    ]);
+    expect(
+      filterSidebarV2VisibleThreads(threads, scope, [localId]).map((t) => t.environmentId),
+    ).toEqual([remoteId]);
+    expect(filterSidebarV2VisibleThreads(threads, null, [localId, remoteId, thirdId])).toEqual([]);
+    expect(filterSidebarV2VisibleThreads(threads, scope, []).map((t) => t.environmentId)).toEqual([
+      localId,
+      remoteId,
+    ]);
+  });
+
   it("identifies subagent threads so the sidebar can hide them", () => {
     const parentId = ThreadId.make("thread-parent");
     const subagent = makeThreadFixture({
