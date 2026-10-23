@@ -387,8 +387,8 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                   <SettingsSection title="Worktrees">
                     <SettingsSwitchRow
                       icon="arrow.triangle.branch"
-                      label="Start from origin"
-                      subtitle="Base new worktrees on the remote branch."
+                      label="Start from remote"
+                      subtitle="Uses the latest commit of the base branch’s tracked remote branch, even if its name differs. Otherwise uses the same-named branch on origin. Uses your local branch if that remote branch is missing."
                       value={uniform("newWorktreesStartFromOrigin")}
                       disabled={disabledFor("newWorktreesStartFromOrigin")}
                       onValueChange={(value) => write({ newWorktreesStartFromOrigin: value })}
@@ -434,15 +434,14 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
 
               {props.page === "maintenance" ? (
                 <>
-                  {!projectSelected &&
-                    selectedTargets
-                      .filter(
+                  {!projectSelected ? (
+                    <DatabaseStorageNotice
+                      targets={selectedTargets.filter(
                         (target) =>
                           target.serverConfig.environment.capabilities.databaseStorage === true,
-                      )
-                      .map((target) => (
-                        <DatabaseStorageNotice key={target.environmentId} target={target} />
-                      ))}
+                      )}
+                    />
+                  ) : null}
                   {!projectSelected ? (
                     <SettingsSection title="Manage environments">
                       {selectedTargets.map((target) => (

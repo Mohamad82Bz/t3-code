@@ -1,7 +1,7 @@
+import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
-  type OrchestrationV2ThreadProjection,
   type ProviderApprovalDecision,
   type RuntimeRequestId,
   type ScopedThreadRef,
@@ -37,6 +37,7 @@ import {
   pendingUserInputRequestKey,
   pruneResolvedUserInputDrafts,
   setPendingUserInputCustomAnswer,
+  threadContextsReferencedByAnswer,
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
@@ -109,7 +110,7 @@ export function usePendingThreadRequests(input: {
   readonly environmentId: EnvironmentId;
   readonly activeThreadId: ThreadId | null;
   readonly activeThread: { readonly id: ThreadId } | undefined;
-  readonly serverProjection: OrchestrationV2ThreadProjection | null;
+  readonly serverProjection: ThreadStructure | null;
   readonly supportsQuestionAttachments: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
   readonly setComposerDraftPrompt: (target: ScopedThreadRef | DraftId, prompt: string) => void;
@@ -452,7 +453,10 @@ export function usePendingThreadRequests(input: {
         );
         store.addThreadContexts(
           composerDraftTarget,
-          store.getComposerDraft(questionTarget)?.threadContexts ?? [],
+          threadContextsReferencedByAnswer(
+            displacedAnswer ?? "",
+            store.getComposerDraft(questionTarget)?.threadContexts ?? [],
+          ),
           { appendReference: false },
         );
       }

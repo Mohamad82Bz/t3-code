@@ -85,6 +85,8 @@ export interface PackageManagedProviderMaintenanceDefinition {
   readonly nativeUpdate: {
     readonly args: ReadonlyArray<string>;
     readonly isCommandPath?: (commandPath: string) => boolean;
+    /** The updater cannot detect installs outside `isCommandPath`, so leave those manual-only. */
+    readonly requiresCommandPath?: boolean;
     readonly env?: NodeJS.ProcessEnv;
   } | null;
 }
@@ -211,8 +213,15 @@ export function normalizeCommandPath(commandPath: string): string {
   return commandPath.replaceAll("\\", "/").toLowerCase();
 }
 
+/**
+ * Vite+ shims live in `<VP_HOME>/bin`: `~/.vite-plus` by default,
+ * `~/.local/share/vite-plus` with the XDG layout, and `%LOCALAPPDATA%\vite-plus`
+ * on Windows.
+ */
 function isVitePlusGlobalCommandPath(commandPath: string): boolean {
-  return normalizeCommandPath(commandPath).includes("/.vite-plus/bin/");
+  return /\/(?:\.vite-plus|\.local\/share\/vite-plus|appdata\/local\/vite-plus)\/bin\//.test(
+    normalizeCommandPath(commandPath),
+  );
 }
 
 function isBunGlobalCommandPath(commandPath: string): boolean {
@@ -456,16 +465,22 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
         ...(nativeUpdate.env ? { env: nativeUpdate.env } : {}),
       })
     : manual;
-  if (nativeUpdate?.isCommandPath && commandPaths.some(nativeUpdate.isCommandPath)) {
+  // A native-looking launcher can still delegate to a mise-owned install.
+  if (
+    nativeUpdate?.isCommandPath &&
+    commandPaths.some(nativeUpdate.isCommandPath) &&
+    !commandPaths.some(isMiseCommandPath) &&
+    !(yield* isMiseWrapperScript(context))
+  ) {
     return native;
   }
   // A `node_modules` path not proven below belongs to another package or a
   // project, so the provider's own updater could act on the wrong install.
-  const fallback = commandPaths.some((commandPath) =>
-    normalizeCommandPath(commandPath).includes("/node_modules/"),
-  )
-    ? manual
-    : native;
+  const fallback =
+    nativeUpdate?.requiresCommandPath ||
+    commandPaths.some((commandPath) => normalizeCommandPath(commandPath).includes("/node_modules/"))
+      ? manual
+      : native;
   if (commandPaths.some(isVitePlusGlobalCommandPath)) {
     return makeProviderMaintenanceCapabilities({
       provider: definition.provider,
@@ -576,8 +591,8 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
 
 /**
  * `brew upgrade` capabilities once the keg's prefix is confirmed by a `brew`
- * that reports it as its own, with `latestVersion` from `brew info`. Null when
- * no `brew` is found or it owns another prefix.
+ * that reports it as its own. Version checks defer `brew info` until needed.
+ * Null when no `brew` is found or it owns another prefix.
  */
 export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProviderMaintenance")(
   function* (
@@ -608,9 +623,7 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
     }
     const args =
       homebrew.kind === "cask" ? ["upgrade", "--cask", homebrew.name] : ["upgrade", homebrew.name];
-    // Homebrew lags npm by hours on every release, so compare against what
-    // `brew upgrade` can actually deliver.
-    const info = yield* runProbe(brewPath, ["info", "--json=v2", homebrew.name], context.env);
+    const services = yield* Effect.context<ProviderMaintenanceResolverServices>();
     return makeProviderMaintenanceCapabilities({
       provider: input.provider,
       packageName: input.packageName,
@@ -618,7 +631,16 @@ export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProv
       updateArgs: args,
       updateLockKey: "homebrew",
       updateCommand: ["brew", ...args].join(" "),
-      latestVersion: info ? parseHomebrewLatestVersion(info, homebrew) : null,
+      // Brew's release can lag npm; only its own channel can say what upgrade installs.
+      latestVersion: null,
+      lookupLatestVersion: runProbe(
+        brewPath,
+        ["info", "--json=v2", homebrew.name],
+        context.env,
+      ).pipe(
+        Effect.map((info) => (info ? parseHomebrewLatestVersion(info, homebrew) : null)),
+        Effect.provideContext(services),
+      ),
     });
   },
 );
@@ -852,8 +874,9 @@ const fetchNpmLatestVersion = Effect.fn("fetchNpmLatestVersion")(function* (pack
 
 /** The installer's own answer is cached apart from the npm registry entry. */
 function installerLatestVersionKey(capabilities: ProviderMaintenanceCapabilities) {
-  return capabilities.lookupLatestVersion && capabilities.update && capabilities.packageName
-    ? `${capabilities.update.lockKey}:${capabilities.packageName}`
+  const update = capabilities.update;
+  return capabilities.lookupLatestVersion && update
+    ? [update.lockKey, update.executable, ...update.args].join("\0")
     : null;
 }
 
@@ -868,14 +891,6 @@ export function latestProviderVersionCacheKeys(
 export const resolveLatestProviderVersion = Effect.fn("resolveLatestProviderVersion")(function* (
   maintenanceCapabilities: ProviderMaintenanceCapabilities,
 ) {
-  if (maintenanceCapabilities.latestVersion !== undefined) {
-    return maintenanceCapabilities.latestVersion;
-  }
-  const packageName = maintenanceCapabilities.packageName;
-  if (!packageName) {
-    return null;
-  }
-
   const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
   const installerKey = installerLatestVersionKey(maintenanceCapabilities);
   if (installerKey && maintenanceCapabilities.lookupLatestVersion) {
@@ -885,8 +900,27 @@ export const resolveLatestProviderVersion = Effect.fn("resolveLatestProviderVers
     );
     if (installable !== null) return installable;
   }
+  if (maintenanceCapabilities.latestVersion !== undefined) {
+    return maintenanceCapabilities.latestVersion;
+  }
+  const packageName = maintenanceCapabilities.packageName;
+  if (!packageName) {
+    return null;
+  }
+
   return yield* latestVersions.cached(packageName, fetchNpmLatestVersion(packageName));
 });
+
+export const invalidateLatestProviderVersion = Effect.fn("invalidateLatestProviderVersion")(
+  function* (maintenanceCapabilities: ProviderMaintenanceCapabilities) {
+    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
+    yield* Effect.forEach(
+      latestProviderVersionCacheKeys(maintenanceCapabilities),
+      latestVersions.invalidate,
+      { discard: true },
+    );
+  },
+);
 
 export const enrichProviderSnapshotWithVersionAdvisory = Effect.fn(
   "enrichProviderSnapshotWithVersionAdvisory",
@@ -899,17 +933,19 @@ export const enrichProviderSnapshotWithVersionAdvisory = Effect.fn(
 ) {
   const capabilities =
     maintenanceCapabilities ?? makeManualProviderMaintenanceCapabilities(snapshot.driver);
+  const currentVersion =
+    snapshot.installedVersion !== undefined ? snapshot.installedVersion : snapshot.version;
   const shouldResolveLatestVersion =
     options?.enableProviderUpdateChecks !== false &&
     snapshot.enabled &&
     snapshot.installed &&
-    Boolean(snapshot.version);
+    Boolean(currentVersion);
   if (!shouldResolveLatestVersion) {
     return {
       ...snapshot,
       versionAdvisory: createProviderVersionAdvisory({
         driver: snapshot.driver,
-        currentVersion: snapshot.version,
+        currentVersion,
         checkedAt: snapshot.checkedAt,
         maintenanceCapabilities: capabilities,
       }),
@@ -921,7 +957,7 @@ export const enrichProviderSnapshotWithVersionAdvisory = Effect.fn(
     ...snapshot,
     versionAdvisory: createProviderVersionAdvisory({
       driver: snapshot.driver,
-      currentVersion: snapshot.version,
+      currentVersion,
       latestVersion,
       checkedAt: DateTime.formatIso(yield* DateTime.now),
       maintenanceCapabilities: capabilities,

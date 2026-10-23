@@ -44,10 +44,7 @@ export class OrchestrationEffectExecutionError extends Schema.TaggedError<Orches
  * "is not active" would drop the outbox item without ever starting the
  * replacement turn.
  */
-export function isNonRetryableProviderTurnControlFailure(
-  effectType: string,
-  errorText: string,
-): boolean {
+function isNonRetryableProviderTurnControlFailure(effectType: string, errorText: string): boolean {
   if (effectType !== "provider-turn.interrupt") {
     return false;
   }
@@ -462,6 +459,17 @@ export const layerExecutor: Layer.Layer<
                     }),
                 ),
               );
+          case "scheduled-tasks.cleanup":
+            return resourceCleanup.cleanupScheduledTasks(effect.threadId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
           case "terminal.cleanup":
             return resourceCleanup.cleanupTerminals(effect.threadId).pipe(
               Effect.mapError(
@@ -673,8 +681,9 @@ export const layerWithOptions = (
           ? requeueClaim(effect, cause)
           : terminalizeClaim(effect, cause);
 
-      const runOnce = (excludeRestartContinuations = false) =>
-        Effect.gen(function* () {
+      // The worker probes for work repeatedly, including when the outbox is empty.
+      const runOnce = Effect.fnUntraced(
+        function* (excludeRestartContinuations = false) {
           const claimExit = yield* Effect.exit(
             outbox.claimNext({ workerId, leaseDurationMs, excludeRestartContinuations }),
           );
@@ -781,13 +790,16 @@ export const layerWithOptions = (
             });
           }
           return true;
-        }).pipe(
-          Effect.mapError((cause) =>
-            isOrchestrationEffectWorkerError(cause)
-              ? cause
-              : new OrchestrationEffectWorkerError({ operation: "run", cause }),
+        },
+        (effect, _excludeRestartContinuations?: boolean) =>
+          effect.pipe(
+            Effect.mapError((cause) =>
+              isOrchestrationEffectWorkerError(cause)
+                ? cause
+                : new OrchestrationEffectWorkerError({ operation: "run", cause }),
+            ),
           ),
-        );
+      );
 
       return OrchestrationEffectWorkerV2.of({
         awaitWork: outbox.awaitAvailable,
@@ -802,14 +814,13 @@ export const layerWithOptions = (
               }),
           ),
         ),
-        drain: (maxEffects = Number.MAX_SAFE_INTEGER) =>
-          Effect.gen(function* () {
-            let completed = 0;
-            while (completed < maxEffects && (yield* runOnce())) {
-              completed += 1;
-            }
-            return completed;
-          }),
+        drain: Effect.fn("EffectWorker.drain")(function* (maxEffects = Number.MAX_SAFE_INTEGER) {
+          let completed = 0;
+          while (completed < maxEffects && (yield* runOnce())) {
+            completed += 1;
+          }
+          return completed;
+        }),
       });
     }),
   );

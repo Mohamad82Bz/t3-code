@@ -17,7 +17,7 @@ import { collectToolFilePaths, isJavaScriptReplTool } from "@t3tools/shared/tool
 import { ExternalLinkIcon, GitBranchIcon, RotateCcwIcon } from "lucide-react";
 import { memo, type ReactNode, Suspense, use } from "react";
 
-import { useTheme } from "../../hooks/useTheme";
+import { useRenderedAppearance } from "../../hooks/useTheme";
 import { cn } from "../../lib/utils";
 import { resolveDiffThemeName } from "../../lib/diffRendering";
 import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
@@ -25,7 +25,8 @@ import { useTurnItemDetail } from "../../state/queries";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { Button } from "../ui/button";
-import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
+import ChatMarkdown from "../ChatMarkdown";
+import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { CommandOutputPanel, useCommandOutputStreaming } from "./CommandOutputPanel";
 import { resolveExternalWebLinkHref } from "./externalLinkContextMenu";
@@ -55,7 +56,7 @@ function SyntaxTokens({
   readonly text: string;
   readonly language: "json" | "typescript";
 }) {
-  const { resolvedTheme } = useTheme();
+  const resolvedTheme = useRenderedAppearance();
   const highlighter = use(getSyntaxHighlighterPromise(language));
   const { tokens } = highlighter.codeToTokens(text, {
     lang: language,
