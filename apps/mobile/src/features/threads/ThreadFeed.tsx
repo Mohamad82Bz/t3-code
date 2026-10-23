@@ -1083,6 +1083,7 @@ function renderFeedEntry(
         iconSubtleColor={iconSubtleColor}
         summary={entry.summary}
         summaryKind={entry.summaryKind}
+        diffStats={entry.diffStats}
         themeAppearance={props.themeAppearance}
         toolSurface={entry.toolSurface}
         toolIcon={entry.toolIcon}

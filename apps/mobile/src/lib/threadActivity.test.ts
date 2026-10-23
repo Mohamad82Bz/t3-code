@@ -151,6 +151,42 @@ it("keeps approval prompts rather than presenting them as tool work", () => {
   ).not.toMatch(/Ran|changed/);
 });
 
+describe("tool group diff totals", () => {
+  it.each([false, true])(
+    "accumulates completed edits in mobile groups (working: %s)",
+    (working) => {
+      const startedAt = "2026-06-20T00:00:01.000Z";
+      const edits = ["completed", "completed", "failed", "running"].map((status, index) => ({
+        ...base(`edit-${index}`, startedAt, index),
+        type: "file_change" as const,
+        fileName: "same-file.ts",
+        status: status as "completed" | "failed" | "running",
+        additions: status === "completed" ? 5 : 999,
+        deletions: status === "completed" ? 2 : 999,
+      }));
+      const feed = buildThreadFeed(edits.map((item, index) => projected(item, index)));
+      const latestRun = working
+        ? { runId, status: "running" as const, startedAt, completedAt: null }
+        : null;
+      const collapsed = deriveThreadFeedPresentation(feed, latestRun, new Set([runId]));
+      const toggle = collapsed.find((row) => row.type === "work-toggle");
+      expect(toggle).toMatchObject({ expanded: false, diffStats: { additions: 10, deletions: 4 } });
+      if (toggle?.type !== "work-toggle") throw new Error("Expected tool group");
+      const expanded = deriveThreadFeedPresentation(
+        feed,
+        latestRun,
+        new Set([runId]),
+        new Set([toggle.groupId]),
+      );
+      expect(expanded.find((row) => row.type === "work-toggle")).toMatchObject({
+        expanded: true,
+        diffStats: toggle.diffStats,
+      });
+      expect(expanded.some((row) => row.type === "activity-group")).toBe(true);
+    },
+  );
+});
+
 function base(id: string, updatedAt: string, ordinal: number) {
   const timestamp = DateTime.makeUnsafe(updatedAt);
   return {

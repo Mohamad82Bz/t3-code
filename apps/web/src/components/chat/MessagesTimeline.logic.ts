@@ -19,6 +19,7 @@ import {
   normalizeCompactToolLabel,
   resolveWorkEntryToolPresentation,
   summarizeToolGroup,
+  toolGroupDiffStats,
   toolGroupAction,
   toolGroupSummaryKind,
   contextCompactionTokenCounts,
@@ -504,6 +505,7 @@ type MessagesTimelineRowContent =
       groupId: string;
       expanded: boolean;
       active: boolean;
+      diffStats?: { additions: number; deletions: number } | undefined;
       thought?: WorkLogEntry;
     }
   | {
@@ -1463,6 +1465,7 @@ export function deriveMessagesTimelineRows(input: {
     activeWorkAnchor && latestVisibleToolEntry && !latestToolFailed
       ? (() => {
           const groupId = workGroupId(activeWorkAnchor.id);
+          const groupedEntries = visibleActiveToolEntries.map((entry) => entry.entry);
           return {
             kind: "work-live" as const,
             id: latestToolKeepsActivityLive
@@ -1470,7 +1473,8 @@ export function deriveMessagesTimelineRows(input: {
               : `work-live:${activeWorkAnchor.id}`,
             createdAt: activeWorkAnchor.createdAt,
             entry: (latestRunningToolEntry ?? latestVisibleToolEntry).entry,
-            groupedEntries: visibleActiveToolEntries.map((entry) => entry.entry),
+            groupedEntries,
+            diffStats: toolGroupDiffStats(groupedEntries),
             groupId,
             expanded: input.expandedWorkGroupIds?.has(groupId) ?? false,
             active: latestToolKeepsActivityLive,
@@ -1642,6 +1646,7 @@ export function deriveMessagesTimelineRows(input: {
             createdAt: timelineEntry.createdAt,
             entry: latestActiveToolEntry,
             groupedEntries: visibleGroupedEntries,
+            diffStats: toolGroupDiffStats(visibleGroupedEntries),
             groupId,
             expanded,
             active: true,
@@ -1698,15 +1703,7 @@ export function deriveMessagesTimelineRows(input: {
           const summaryToolIcon = usesSingleToolCallLabel
             ? resolveWorkEntryToolPresentation(singleEntry, "completed")?.icon
             : undefined;
-          let additions = 0;
-          let deletions = 0;
-          for (const entry of visibleGroupedEntries) {
-            const item = entry.projectedItem?.item;
-            if (item?.type === "file_change" && item.status === "completed") {
-              additions += item.additions ?? 0;
-              deletions += item.deletions ?? 0;
-            }
-          }
+          const diffStats = toolGroupDiffStats(visibleGroupedEntries);
           nextRows.push({
             kind: "work-toggle",
             id: `work-toggle:${timelineEntry.id}`,
@@ -1721,7 +1718,7 @@ export function deriveMessagesTimelineRows(input: {
                 ? singleEntry.label
                 : summarizeToolGroup(visibleGroupedEntries).summary,
             summaryKind,
-            ...(additions > 0 || deletions > 0 ? { diffStats: { additions, deletions } } : {}),
+            ...(diffStats ? { diffStats } : {}),
             ...(groupToolSurface ? { toolSurface: groupToolSurface } : {}),
             ...(groupToolIcon ? { toolIcon: groupToolIcon } : {}),
             ...(summaryToolIcon ? { summaryToolIcon } : {}),
@@ -2226,6 +2223,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.groupId === bw.groupId &&
         a.expanded === bw.expanded &&
         a.active === bw.active &&
+        Equal.equals(a.diffStats, bw.diffStats) &&
         Equal.equals(a.entry, bw.entry) &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
       );

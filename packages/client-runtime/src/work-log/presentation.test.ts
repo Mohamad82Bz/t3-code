@@ -17,6 +17,7 @@ import {
   resolveViewedImageAsset,
   resolveWorkEntryToolPresentation,
   summarizeToolGroup,
+  toolGroupDiffStats,
   toolGroupAction,
   toolGroupSummaryKind,
   toolItemForDisplay,
@@ -30,7 +31,7 @@ import {
 
 function commandItem(
   fields: Partial<Extract<OrchestrationV2TurnItem, { type: "command_execution" }>> = {},
-): OrchestrationV2TurnItem {
+): Extract<OrchestrationV2TurnItem, { type: "command_execution" }> {
   return {
     id: TurnItemId.make("command"),
     threadId: ThreadId.make("thread"),
@@ -52,6 +53,57 @@ function commandItem(
     ...fields,
   };
 }
+
+describe("toolGroupDiffStats", () => {
+  const edit = (
+    fields: Partial<Extract<OrchestrationV2TurnItem, { type: "file_change" }>> = {},
+  ) => ({
+    structuredPayload: {
+      ...commandItem(),
+      type: "file_change" as const,
+      fileName: "same-file.ts",
+      additions: 5,
+      deletions: 2,
+      ...fields,
+    },
+  });
+
+  it("accumulates every successful edit, including repeated edits to the same file", () => {
+    expect(toolGroupDiffStats([edit(), edit(), { structuredPayload: commandItem() }])).toEqual({
+      additions: 10,
+      deletions: 4,
+    });
+  });
+
+  it.each(["running", "failed", "cancelled", "interrupted"] as const)(
+    "ignores %s edits even when they carry counts",
+    (status) => {
+      expect(
+        toolGroupDiffStats([edit(), edit({ status, additions: 999, deletions: 999 })]),
+      ).toEqual({
+        additions: 5,
+        deletions: 2,
+      });
+    },
+  );
+
+  it("handles partial and missing counts", () => {
+    expect(
+      toolGroupDiffStats([edit({ deletions: undefined }), edit({ additions: undefined })]),
+    ).toEqual({
+      additions: 5,
+      deletions: 2,
+    });
+    expect(
+      toolGroupDiffStats([edit({ additions: undefined, deletions: undefined }), {}]),
+    ).toBeUndefined();
+  });
+
+  it("omits empty and zero totals", () => {
+    expect(toolGroupDiffStats([])).toBeUndefined();
+    expect(toolGroupDiffStats([edit({ additions: 0, deletions: 0 })])).toBeUndefined();
+  });
+});
 
 describe("commandDescription", () => {
   it.each([

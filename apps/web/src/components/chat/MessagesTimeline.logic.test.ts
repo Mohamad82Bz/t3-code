@@ -56,31 +56,42 @@ import {
 import type { WorkLogEntry } from "../../session-logic";
 
 describe("tool group diff totals", () => {
-  function rowsFor(additions: number, deletions = 0) {
+  function rowsFor(
+    additions: number,
+    deletions = 0,
+    options: { isWorking?: boolean; expandedWorkGroupIds?: ReadonlySet<string> } = {},
+  ) {
     const createdAt = "2026-10-19T00:00:00Z";
     const source = makeStreamingTimelineFixture().visibleTurnItems.find(
       (row) => row.item.type === "dynamic_tool",
     )!;
     if (source.item.type !== "dynamic_tool") throw new Error("Expected tool fixture");
     const sourceItem = source.item;
-    const items = ["first", "second", "failed"].map((name, index) => {
-      const id = TurnItemId.make(`edit-${name}`);
-      return {
-        ...source,
-        sourceItemId: id,
-        position: index,
-        item: {
-          ...sourceItem,
-          id,
-          ordinal: index,
-          type: "file_change" as const,
-          fileName: "same-file.ts",
-          status: name === "failed" ? ("failed" as const) : ("completed" as const),
-          additions: name === "failed" ? 999 : additions,
-          deletions: name === "failed" ? 999 : deletions,
-        },
-      };
-    });
+    const items = ["first", "second", "failed", ...(options.isWorking ? ["running"] : [])].map(
+      (name, index) => {
+        const id = TurnItemId.make(`edit-${name}`);
+        return {
+          ...source,
+          sourceItemId: id,
+          position: index,
+          item: {
+            ...sourceItem,
+            id,
+            ordinal: index,
+            type: "file_change" as const,
+            fileName: "same-file.ts",
+            status:
+              name === "failed"
+                ? ("failed" as const)
+                : name === "running"
+                  ? ("running" as const)
+                  : ("completed" as const),
+            additions: name === "failed" || name === "running" ? 999 : additions,
+            deletions: name === "failed" || name === "running" ? 999 : deletions,
+          },
+        };
+      },
+    );
     return deriveMessagesTimelineRows({
       timelineEntries: items.map((projectedItem, index) => ({
         id: `entry-${index}`,
@@ -90,21 +101,61 @@ describe("tool group diff totals", () => {
           id: `work-${index}`,
           createdAt,
           label: "Edited same-file.ts",
+          runId: sourceItem.runId,
           tone: "tool" as const,
           itemType: "file_change" as const,
           projectedItem,
+          structuredPayload: projectedItem.item,
+          toolLifecycleStatus:
+            projectedItem.item.status === "running"
+              ? ("inProgress" as const)
+              : projectedItem.item.status,
         },
       })),
-      isWorking: false,
+      isWorking: options.isWorking ?? false,
+      runningRunId: options.isWorking ? sourceItem.runId : null,
+      expandedRunIds: new Set(sourceItem.runId ? [sourceItem.runId] : []),
       activeTurnStartedAt: null,
       turnDiffSummaries: [],
       supportsConversationRollback: false,
+      ...(options.expandedWorkGroupIds
+        ? { expandedWorkGroupIds: options.expandedWorkGroupIds }
+        : {}),
     });
   }
 
   it("sums completed calls even when they edit the same file and ignores failed attempts", () => {
     const row = rowsFor(5, 2).find((row) => row.kind === "work-toggle");
     expect(row).toMatchObject({ expanded: false, diffStats: { additions: 10, deletions: 4 } });
+  });
+
+  it("keeps accumulated successful edits on the collapsed live group while another edit runs", () => {
+    const collapsed = rowsFor(5, 2, { isWorking: true }).find((row) => row.kind === "work-live");
+    expect(collapsed).toMatchObject({
+      expanded: false,
+      diffStats: { additions: 10, deletions: 4 },
+    });
+    if (collapsed?.kind !== "work-live") throw new Error("Expected live group");
+    const expanded = rowsFor(5, 2, {
+      isWorking: true,
+      expandedWorkGroupIds: new Set([collapsed.groupId]),
+    });
+    expect(expanded.find((row) => row.kind === "work-live")).toMatchObject({
+      expanded: true,
+      diffStats: collapsed.diffStats,
+    });
+    expect(expanded.some((row) => row.kind === "work" && row.isExpandedToolGroup)).toBe(true);
+  });
+
+  it("refreshes live totals without waiting for the running tool to finish", () => {
+    const previous = computeStableMessagesTimelineRows(rowsFor(5, 2, { isWorking: true }), {
+      result: [],
+      byId: new Map(),
+    });
+    const next = computeStableMessagesTimelineRows(rowsFor(6, 3, { isWorking: true }), previous);
+    const row = next.result.find((row) => row.kind === "work-live");
+    expect(row).toMatchObject({ diffStats: { additions: 12, deletions: 6 } });
+    expect(row).not.toBe(previous.result.find((row) => row.kind === "work-live"));
   });
 
   it("omits zero totals", () => {
@@ -119,7 +170,9 @@ describe("tool group diff totals", () => {
     expect(next.result.find((row) => row.kind === "work-toggle")).toMatchObject({
       diffStats: { additions: 12, deletions: 0 },
     });
-    expect(next.result[0]).not.toBe(previous.result[0]);
+    expect(next.result.find((row) => row.kind === "work-toggle")).not.toBe(
+      previous.result.find((row) => row.kind === "work-toggle"),
+    );
   });
 });
 

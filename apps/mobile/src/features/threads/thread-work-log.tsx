@@ -1319,6 +1319,7 @@ export function ThreadWorkGroupToggle(props: {
   readonly iconSubtleColor: import("react-native").ColorValue;
   readonly summary: string;
   readonly summaryKind: ToolGroupSummaryKind;
+  readonly diffStats?: { additions: number; deletions: number } | undefined;
   readonly summaryToolIcon?: "browser" | "device" | "t3-code" | "pull-request" | "brain";
   readonly themeAppearance: "light" | "dark";
   readonly toolSurface?: import("@t3tools/contracts").ToolActivitySurface;
@@ -1328,8 +1329,15 @@ export function ThreadWorkGroupToggle(props: {
   readonly thought?: string | undefined;
   readonly onToggle: () => void;
 }) {
+  const diffStats = props.expanded ? undefined : props.diffStats;
   const statusLabel = props.hasFailure ? `${props.summary}, tool call failed` : props.summary;
-  const accessibilityLabel = props.thought ? `${props.thought} ${statusLabel}` : statusLabel;
+  const accessibilityLabel = [
+    props.thought,
+    statusLabel,
+    diffStats ? `${diffStats.additions} additions, ${diffStats.deletions} deletions` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const icon =
     props.summaryToolIcon ??
     (props.toolSurface
@@ -1394,6 +1402,16 @@ export function ThreadWorkGroupToggle(props: {
             <WorkLogLabel key={props.rowSizing.textSizeKey}>{props.summary}</WorkLogLabel>
           </>
         )}
+        {diffStats ? (
+          <View className="shrink-0 flex-row gap-1" aria-hidden>
+            <Text className="font-mono text-3xs text-adaptive-emerald-600-400">
+              +{diffStats.additions.toLocaleString()}
+            </Text>
+            <Text className="font-mono text-3xs text-adaptive-rose-600-400">
+              -{diffStats.deletions.toLocaleString()}
+            </Text>
+          </View>
+        ) : null}
         <ThreadDisclosureChevron
           expanded={props.expanded}
           collapsedDirection="down"

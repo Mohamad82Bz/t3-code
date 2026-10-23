@@ -3831,6 +3831,15 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
   const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "") : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
+  const diffStats = row.expanded ? undefined : row.diffStats;
+  const accessibleLabel = [
+    thoughtLine,
+    threadLabel?.text ?? label,
+    diffStats ? `${diffStats.additions} additions, ${diffStats.deletions} deletions` : null,
+    failed ? "tool call failed" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <button
@@ -3839,11 +3848,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
         "group/live-work flex w-full max-w-full cursor-pointer rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
         thoughtLine ? "flex-col items-start" : "min-h-6 items-center",
       )}
-      aria-label={
-        failed
-          ? `${thoughtLine ? `${thoughtLine} ` : ""}${threadLabel?.text ?? label}, tool call failed`
-          : undefined
-      }
+      aria-label={accessibleLabel}
       aria-expanded={row.expanded}
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
     >
@@ -3863,46 +3868,56 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
           wrapLabel
         />
       ) : null}
-      <LiveActivityRow
-        label={
-          thoughtIsStatus ? (
-            row.active ? (
-              "Thinking"
-            ) : (
-              "Thought"
-            )
-          ) : row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer) ? (
-            <span className="flex min-w-0 gap-1.5">
-              <span className="min-w-0 truncate">{label}</span>
-              <span className="min-w-0 truncate text-foreground">
-                {getQuestionAnswerPreview(row.entry.questionAnswer)}
+      <div className="flex w-full min-w-0 items-center justify-between gap-2">
+        <LiveActivityRow
+          label={
+            thoughtIsStatus ? (
+              row.active ? (
+                "Thinking"
+              ) : (
+                "Thought"
+              )
+            ) : row.entry.questionAnswer && hasQuestionAnswer(row.entry.questionAnswer) ? (
+              <span className="flex min-w-0 gap-1.5">
+                <span className="min-w-0 truncate">{label}</span>
+                <span className="min-w-0 truncate text-foreground">
+                  {getQuestionAnswerPreview(row.entry.questionAnswer)}
+                </span>
               </span>
-            </span>
-          ) : row.entry.itemType === "reasoning" ? (
-            <ReactMarkdown
-              remarkPlugins={[
-                remarkGfm,
-                remarkKeepWindowsPaths,
-                [remarkThoughtPreview, row.active ? "Thinking" : "Thought"],
-              ]}
-            >
-              {row.entry.detail ?? label}
-            </ReactMarkdown>
-          ) : threadLabel ? (
-            <ThreadReadLabel
-              label={threadLabel}
-              environmentId={ctx.activeThreadEnvironmentId}
-              linked={false}
-            />
-          ) : (
-            label
-          )
-        }
-        iconName={workEntryIconName(row.entry)}
-        toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
-        failed={failed}
-        active={row.active}
-      />
+            ) : row.entry.itemType === "reasoning" ? (
+              <ReactMarkdown
+                remarkPlugins={[
+                  remarkGfm,
+                  remarkKeepWindowsPaths,
+                  [remarkThoughtPreview, row.active ? "Thinking" : "Thought"],
+                ]}
+              >
+                {row.entry.detail ?? label}
+              </ReactMarkdown>
+            ) : threadLabel ? (
+              <ThreadReadLabel
+                label={threadLabel}
+                environmentId={ctx.activeThreadEnvironmentId}
+                linked={false}
+              />
+            ) : (
+              label
+            )
+          }
+          iconName={workEntryIconName(row.entry)}
+          toolIcon={row.entry.toolIcon ?? row.entry.toolSource?.icon}
+          failed={failed}
+          active={row.active}
+        />
+        {diffStats ? (
+          <DiffStatLabel
+            additions={diffStats.additions}
+            deletions={diffStats.deletions}
+            layout="inline"
+            className="shrink-0 text-xs"
+          />
+        ) : null}
+      </div>
     </button>
   );
 }

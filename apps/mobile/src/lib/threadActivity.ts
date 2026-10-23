@@ -26,6 +26,7 @@ import {
   toolGroupAction,
   resolveWorkEntryToolPresentation,
   summarizeToolGroup,
+  toolGroupDiffStats,
   toolGroupSummaryKind,
   type ToolGroupSummaryKind,
   type WorkLogPresentationEntry,
@@ -214,6 +215,7 @@ type ThreadFeedEntryContent =
       readonly expanded: boolean;
       readonly summary: string;
       readonly summaryKind: ToolGroupSummaryKind;
+      readonly diffStats?: { additions: number; deletions: number } | undefined;
       readonly toolSurface?: WorkLogPresentationEntry["toolSurface"];
       readonly toolIcon?: WorkLogPresentationEntry["toolIcon"];
       readonly summaryToolIcon?: "browser" | "device" | "t3-code" | "pull-request";
@@ -1601,6 +1603,7 @@ function appendToolGroupRows(
     hiddenCount: activities.length,
     expanded,
     summary,
+    diffStats: toolGroupDiffStats(activities.map((activity) => activity.workEntry)),
     summaryKind: toolGroupSummaryKind(
       (live ? [latestActivity] : activities).map((activity) => activity.workEntry),
     ),

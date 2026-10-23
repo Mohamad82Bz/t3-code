@@ -106,6 +106,21 @@ export interface WorkLogPresentationEntry {
   readonly toolIcon?: ToolActivityIcon;
 }
 
+export function toolGroupDiffStats(
+  entries: ReadonlyArray<Pick<WorkLogPresentationEntry, "structuredPayload">>,
+): { additions: number; deletions: number } | undefined {
+  let additions = 0;
+  let deletions = 0;
+  for (const entry of entries) {
+    const item = entry.structuredPayload;
+    if (item?.type === "file_change" && item.status === "completed") {
+      additions += item.additions ?? 0;
+      deletions += item.deletions ?? 0;
+    }
+  }
+  return additions > 0 || deletions > 0 ? { additions, deletions } : undefined;
+}
+
 export type ToolGroupAction =
   | "link-pr"
   | "unlink-pr"
