@@ -206,7 +206,7 @@ export const fitPictureInPictureContentSize = (
   return [Math.round(width), Math.round(height)];
 };
 
-export const recordingFileExtension = (mimeType: string): string => {
+const recordingFileExtension = (mimeType: string): string => {
   const subtype = mimeType.split(";", 1)[0]?.trim().toLowerCase().split("/")[1] ?? "";
   const extension = subtype.replace(/^x-/, "").replace(/[^a-z0-9]/g, "");
   return extension || "video";
@@ -495,7 +495,7 @@ export const previewWindowOpenAction = (details: {
     : "navigate";
 };
 
-export const isPreviewRefreshShortcut = (input: Electron.Input): boolean =>
+const isPreviewRefreshShortcut = (input: Electron.Input): boolean =>
   input.type === "keyDown" &&
   input.key.toLowerCase() === "r" &&
   (input.meta || input.control) &&
@@ -1664,6 +1664,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     }
     yield* SynchronizedRef.modifyEffect(frameCaptureSessionsRef, (sessions) =>
       Effect.gen(function* () {
+        // Cleanup or lock acquisition can outlive the replacement window.
+        if (window.isDestroyed()) return [undefined, sessions] as const;
         if (sessions.size > 0) {
           yield* setWindowBackgroundThrottling(window, false);
         }
@@ -2373,8 +2375,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
 
   // The scheme is read after the session attaches so a concurrent setColorScheme is not
   // overwritten with a stale snapshot.
-  const restoreControlSession = (tabId: string, wc: Electron.WebContents) =>
-    Effect.gen(function* () {
+  const restoreControlSession = Effect.fn("PreviewManager.restoreControlSession")(
+    function* (tabId: string, wc: Electron.WebContents) {
       const beforeAttach = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
       if (beforeAttach?.webContentsId !== wc.id) return;
       const control = yield* ensureControlSession(wc);
@@ -2399,7 +2401,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           }),
         );
       }
-    }).pipe(Effect.ignore);
+    },
+    (effect, _tabId, _wc) => effect.pipe(Effect.ignore),
+  );
 
   // Only the session that saw the detach is replaced: by the time the event is
   // handled the guest may already hold a newer one, which must stay.

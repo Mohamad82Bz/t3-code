@@ -16,6 +16,7 @@ export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
+  environmentScope?: ReactNode;
   onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
@@ -36,6 +37,7 @@ export function SidebarThreadHeader({
   searchFieldRef,
   hasProjects,
   projectScope,
+  environmentScope,
   onNewProject,
   onNewThread,
   newThreadDisabled,
@@ -104,6 +106,7 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
+        {environmentScope}
         {hasProjects ? (
           <>
             {projectScope}

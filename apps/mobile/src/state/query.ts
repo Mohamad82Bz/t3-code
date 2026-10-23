@@ -15,6 +15,13 @@ export interface EnvironmentQueryView<A> {
   readonly refresh: () => void;
 }
 
+export function useEnvironmentQuerySelector<A, E, B>(
+  atom: Atom.Atom<AsyncResult.AsyncResult<A, E>> | null,
+  select: (result: AsyncResult.AsyncResult<A, E>) => B,
+): B {
+  return useAtomValue(atom ?? EMPTY_ASYNC_RESULT_ATOM, select);
+}
+
 function formatError(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
   return error instanceof Error && error.message.trim().length > 0

@@ -19,3 +19,8 @@ export type SubscribeThreadPresenceInput = typeof SubscribeThreadPresenceInput.T
 
 export const ThreadSpectators = Schema.Array(ThreadSpectator);
 export type ThreadSpectators = typeof ThreadSpectators.Type;
+
+export const ThreadPresenceSnapshot = Schema.Array(
+  Schema.Struct({ threadId: ThreadId, spectators: ThreadSpectators }),
+);
+export type ThreadPresenceSnapshot = typeof ThreadPresenceSnapshot.Type;
