@@ -37,6 +37,7 @@ import {
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import { codexFileChangeStats } from "./codexFileChange.ts";
+import { codexCommandTitle } from "./codexCommandTitle.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   COMPUTER_USE_TOOL_SOURCE,
@@ -1194,6 +1195,7 @@ interface ActiveCodexProviderRetry {
 interface TrackedRunningCommandItem {
   readonly id: string;
   readonly command: string;
+  readonly title: string;
   readonly aggregatedOutput?: string;
   readonly processId?: string;
 }
@@ -2316,7 +2318,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               parentItemId: null,
               ordinal,
               status,
-              title: null,
+              title: tracked.title,
               startedAt,
               completedAt,
               updatedAt: completedAt,
@@ -3577,7 +3579,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             parentItemId: null,
             ordinal,
             status: status.turnItem,
-            title: null,
+            title: codexCommandTitle(item.command, item.commandActions),
             startedAt,
             completedAt,
             updatedAt,
@@ -4806,6 +4808,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 yield* trackRunningCommandItem(payload.turnId, {
                   id: payload.item.id,
                   command: payload.item.command,
+                  title: codexCommandTitle(payload.item.command, payload.item.commandActions),
                   ...(payload.item.aggregatedOutput === null ||
                   payload.item.aggregatedOutput === undefined
                     ? {}

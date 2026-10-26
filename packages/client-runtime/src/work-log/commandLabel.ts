@@ -1386,7 +1386,19 @@ function withoutShellWrapper(command: string): string {
     ?.split(/[\\/]/u)
     .at(-1)
     ?.replace(/\.exe$/iu, "");
-  if (!tokens || !program || !SHELL_PROGRAMS.has(program)) return trimmed;
+  if (!tokens || !program) return trimmed;
+  if (program.toLowerCase() === "powershell" || program.toLowerCase() === "pwsh") {
+    let index = 1;
+    for (; index < tokens.length; index += 1) {
+      const option = tokens[index]!.toLowerCase();
+      if (option === "-command" || option === "-c") break;
+      if (POWERSHELL_FLAGS.has(option)) continue;
+      if (!POWERSHELL_OPTIONS_WITH_VALUE.has(option)) return trimmed;
+      index += 1;
+    }
+    return index === tokens.length - 2 ? tokens[index + 1]?.trim() || trimmed : trimmed;
+  }
+  if (!SHELL_PROGRAMS.has(program)) return trimmed;
   const scriptIndex = shellCommandArgumentIndex(tokens, 1);
   // Positional arguments can affect the script; keep those invocations intact.
   if (scriptIndex === null || scriptIndex !== tokens.length - 1) return trimmed;

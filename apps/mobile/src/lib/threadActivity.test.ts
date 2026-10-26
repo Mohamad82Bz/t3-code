@@ -1698,28 +1698,31 @@ it.each([
   expect(JSON.parse(activity!.getFullDetail()!).item.fileName).toBe(fileName);
 });
 
-it("uses native Claude command descriptions for work-log rows", () => {
-  const item = {
-    ...command(),
-    title: "Check repository status",
-    nativeItemRef: {
-      driver: ProviderDriverKind.make("claudeAgent"),
-      nativeId: "bash-1",
-      strength: "strong" as const,
-    },
-  };
-  const entry = {
-    id: "bash-1",
-    createdAt: "2026-09-17T12:00:00Z",
-    label: "Ran command",
-    tone: "tool" as const,
-    command: item.input,
-    structuredPayload: item,
-  };
-  expect(workEntryRowLabel(entry)).toBe("Check repository status");
-  expect(workEntryRowLabel(entry, true)).toBe("Check repository status");
-  expect(entry.command).toBe(item.input);
-});
+it.each(["claudeAgent", "codex"] as const)(
+  "uses %s command descriptions for work-log rows",
+  (driver) => {
+    const item = {
+      ...command(),
+      title: "Check repository status",
+      nativeItemRef: {
+        driver: ProviderDriverKind.make(driver),
+        nativeId: "bash-1",
+        strength: "strong" as const,
+      },
+    };
+    const entry = {
+      id: "bash-1",
+      createdAt: "2026-09-17T12:00:00Z",
+      label: "Ran command",
+      tone: "tool" as const,
+      command: item.input,
+      structuredPayload: item,
+    };
+    expect(workEntryRowLabel(entry)).toBe("Check repository status");
+    expect(workEntryRowLabel(entry, true)).toBe("Check repository status");
+    expect(entry.command).toBe(item.input);
+  },
+);
 
 it.each([
   "C:/workspace/node_modules/types.d.ts",

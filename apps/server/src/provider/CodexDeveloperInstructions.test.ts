@@ -39,6 +39,12 @@ describe("buildCodexAdditionalContext", () => {
     });
   });
 
+  it("delivers shell title instructions separately from collaboration modes", () => {
+    const context = buildCodexAdditionalContext({ model: "gpt-6-luna", reasoningEffort: "high" });
+    NodeAssert.match(context.t3_code_command_titles!.value, /# t3-title:/);
+    NodeAssert.match(context.t3_code_command_titles!.value, /cmd\.exe/);
+  });
+
   it("delivers all orchestration sections in authored order when keys are sorted", () => {
     const context = buildCodexAdditionalContext({
       model: "gpt-5.3-codex",

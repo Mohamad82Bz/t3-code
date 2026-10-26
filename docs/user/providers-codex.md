@@ -92,6 +92,13 @@ in the thread on web, desktop, or mobile. Some tools offer access for one reques
 the current session, or permanently. See [Permission modes](./permission-modes.md)
 for command and file approvals.
 
+## Read shell activity
+
+Codex shell activity uses compact titles for file reads, searches, and commands.
+Expand a tool call to inspect its command and output. For a descriptive title on
+an inline script, ask Codex to put `# t3-title: Describe the operation` on the first
+line of its shell command. This works with PowerShell and Unix shells, not `cmd.exe`.
+
 ## Codex says I hit a usage limit
 
 When Codex stops on a usage limit, the thread names the window that ran out and

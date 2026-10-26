@@ -32,9 +32,11 @@ export type WorkLogToolLifecycleStatus = RuntimeItemStatus | "stopped" | "idle";
 
 export function commandDescription(entry: Pick<WorkLogPresentationEntry, "structuredPayload">) {
   const item = entry.structuredPayload;
-  return item?.type === "command_execution" && item.nativeItemRef?.driver === "claudeAgent"
-    ? item.title?.trim() || undefined
-    : undefined;
+  if (item?.type !== "command_execution") return undefined;
+  const driver = item.nativeItemRef?.driver;
+  if (driver !== "claudeAgent" && driver !== "codex") return undefined;
+  const title = item.title?.trim();
+  return title && title !== "Command" ? title : undefined;
 }
 
 export function toolItemForDisplay(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {

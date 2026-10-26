@@ -103,6 +103,9 @@ describe("commandDescription", () => {
     ["claudeAgent", "   ", undefined],
     ["claudeAgent", null, undefined],
     ["codex", "Command", undefined],
+    ["codex", "Read AGENTS.md", "Read AGENTS.md"],
+    ["codex", "  Migrate global instructions  ", "Migrate global instructions"],
+    ["codex", null, undefined],
   ] as const)("resolves %s command title %j", (driver, title, expected) => {
     expect(
       commandDescription({

@@ -222,6 +222,11 @@ export function buildCodexAdditionalContext(
       kind: "application",
       value: buildRuntimeInstructions({ harness: "Codex", ...runtime }),
     },
+    t3_code_command_titles: {
+      kind: "application",
+      value:
+        "For shell tool calls using PowerShell, bash, sh, or zsh, put a short plain-English purpose on the first line as a shell comment: # t3-title: Read project instructions. Use an imperative phrase describing the whole operation, especially for inline scripts and compound commands. T3 displays this as the tool-call title; it is not output. Keep the real command on subsequent lines. Do not add this comment inside script literals or to cmd.exe commands, which do not support # comments. Do not change execution or request elevated permissions just to provide a title.",
+    },
     ...(tools ? { t3_code_tools: { kind: "application", value: tools } } : {}),
   };
 }
