@@ -57,6 +57,7 @@ import * as ApnsClient from "./agentActivity/ApnsClient.ts";
 import * as ApnsProviderTokens from "./agentActivity/ApnsProviderTokens.ts";
 import * as ApnsDeliveryQueue from "./agentActivity/ApnsDeliveryQueue.ts";
 import * as ApnsDeliveries from "./agentActivity/ApnsDeliveries.ts";
+import * as CloudflareApiPause from "./environments/CloudflareApiPause.ts";
 import * as EnvironmentConnector from "./environments/EnvironmentConnector.ts";
 import * as EnvironmentLinker from "./environments/EnvironmentLinker.ts";
 import * as EnvironmentPublishSignatures from "./environments/EnvironmentPublishSignatures.ts";
@@ -88,8 +89,12 @@ const layerHttpPlatformNotSupported = Layer.succeed(HttpPlatform.HttpPlatform, {
     algorithms: new Set<HttpPlatform.CompressionAlgorithm>(),
     compressResponse: (response) => Effect.succeed(response),
   },
-  fileResponse: () => Effect.die("Relay API does not serve filesystem responses"),
-  fileWebResponse: () => Effect.die("Relay API does not serve file responses"),
+  fileResponse: Effect.fn("HttpPlatform.fileResponse")(function () {
+    return Effect.die("Relay API does not serve filesystem responses");
+  }),
+  fileWebResponse: Effect.fn("HttpPlatform.fileWebResponse")(function () {
+    return Effect.die("Relay API does not serve file responses");
+  }),
 });
 
 const layerRelayApi = Layer.mergeAll(
@@ -117,6 +122,10 @@ export const layer = Api.make(
         date: "2026-05-22",
         flags: ["nodejs_compat"],
       },
+      // Requests run several Postgres queries in sequence. At the user's edge
+      // each one paid the round trip to the database (~300 ms from JNB); next
+      // to PlanetScale `us-west` the request pays that distance once.
+      placement: { region: "aws:us-west-2" },
       domain: relayPublicDomain,
     })),
     Effect.orDie,
@@ -160,10 +169,7 @@ export const layer = Api.make(
     const cloudMintPrivateKey = yield* cloudMintKeyPair.privateKey;
     const cloudMintPublicKey = yield* cloudMintKeyPair.publicKey;
     const hyperdrive = yield* Cloudflare.Hyperdrive.Connect(yield* RelayDb.RelayHyperdrive);
-    // Named prepared statements collide behind Hyperdrive's transaction-mode
-    // pool: sql-pg < 4.0.0-rc.117 names them `effect1..N` per connection, and
-    // inside a transaction a Bind can reach another request's statement
-    // (#14070, Effect-TS/effect#8320). Unnamed statements cannot collide.
+    // Named statements collide behind Hyperdrive transaction pooling (Effect-TS/effect#8320); use unnamed statements.
     const db = yield* Drizzle.Postgres(hyperdrive.connectionString, undefined, {
       prepare: false,
     });
@@ -179,8 +185,7 @@ export const layer = Api.make(
     const legacyTunnelGraceMinutes = Option.getOrUndefined(
       yield* RelayConfiguration.legacyTunnelGraceMinutesConfig,
     );
-    // Keys are endpoint keys or hashes over them, which already differ per
-    // stage, so stages sharing an account cannot collide in these namespaces.
+    // Endpoint keys and their hashes differ by stage, including in shared accounts.
     const hookRateLimit = yield* Cloudflare.RateLimit("HOOK_RATE_LIMIT", {
       namespaceId: 1001,
       simple: {
@@ -234,12 +239,21 @@ export const layer = Api.make(
           ),
         );
     const layerHookInbox = Layer.succeed(HookInbox.HookInbox, {
-      hold: ({ endpointKey, baseUrl, hook }) =>
-        hookInboxes.getByName(endpointKey).hold(hook, baseUrl).pipe(inboxCall("hold", endpointKey)),
-      wake: ({ endpointKey, baseUrl }) =>
-        hookInboxes.getByName(endpointKey).wake(baseUrl).pipe(inboxCall("wake", endpointKey)),
-      clear: ({ endpointKey }) =>
-        hookInboxes.getByName(endpointKey).clear().pipe(inboxCall("clear", endpointKey)),
+      hold: Effect.fn("HookInbox.hold")(function ({ endpointKey, baseUrl, hook }) {
+        return hookInboxes
+          .getByName(endpointKey)
+          .hold(hook, baseUrl)
+          .pipe(inboxCall("hold", endpointKey));
+      }),
+      wake: Effect.fn("HookInbox.wake")(function ({ endpointKey, baseUrl }) {
+        return hookInboxes
+          .getByName(endpointKey)
+          .wake(baseUrl)
+          .pipe(inboxCall("wake", endpointKey));
+      }),
+      clear: Effect.fn("HookInbox.clear")(function ({ endpointKey }) {
+        return hookInboxes.getByName(endpointKey).clear().pipe(inboxCall("clear", endpointKey));
+      }),
     });
 
     const layerRuntime = Layer.empty.pipe(
@@ -267,10 +281,12 @@ export const layer = Api.make(
         FcmDeliveries.layer.pipe(
           Layer.provide(
             Layer.succeed(FcmDeliveryQueueSender.FcmDeliveryQueueSender, {
-              send: (body) =>
-                fcmDeliveryQueueSender
-                  .send(body)
-                  .pipe(Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext)),
+              send: Effect.fn("FcmDeliveryQueueSender.send")(
+                function* (body) {
+                  return yield* fcmDeliveryQueueSender.send(body);
+                },
+                Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext),
+              ),
             }),
           ),
           Layer.provideMerge(
@@ -291,6 +307,7 @@ export const layer = Api.make(
       Layer.provideMerge(EnvironmentCredentials.layer),
       Layer.provideMerge(
         Layer.mergeAll(
+          CloudflareApiPause.layer,
           EnvironmentLinks.layer,
           ManagedEndpointAllocations.layer,
           ManagedTunnelLimits.layer,
@@ -414,8 +431,16 @@ export const layer = Api.make(
                 : Effect.logWarning("Failed to clean up inactive managed tunnels", { cause }),
             ),
           ),
+          AgentActivityPublisher.AgentActivityPublisher.pipe(
+            Effect.flatMap((publisher) => publisher.endIdleLiveActivities),
+            Effect.catchCause((cause) =>
+              Cause.hasInterrupts(cause)
+                ? Effect.interrupt
+                : Effect.logWarning("Failed to end idle Live Activities", { cause }),
+            ),
+          ),
         ],
-        { concurrency: 2, discard: true },
+        { concurrency: 3, discard: true },
       ).pipe(
         Effect.withSpan("relay.cron.prune_expired_state"),
         Observability.withSchemaErrorSpanAttributes,
@@ -457,10 +482,7 @@ export const layer = Api.make(
         Layer.provideMerge(Cloudflare.DNS.ReadWriteDnsHttp),
         Layer.provideMerge(Cloudflare.Workers.RateLimitBinding),
         Layer.provideMerge(HookInboxObject.layer),
-        // The worker runtime opens its own HTTP span around ours. Ours carries
-        // the route, header redaction and webhook URL redaction, and drops a
-        // webhook sender's traceparent, so the runtime's span is off for every
-        // request rather than duplicating it.
+        // Disable the duplicate runtime span; ours applies route/header/token redaction and rejects sender traceparent.
         Layer.provideMerge(
           Alchemy.Telemetry.layer(Layer.succeed(HttpMiddleware.TracerDisabledWhen)(() => true)),
         ),

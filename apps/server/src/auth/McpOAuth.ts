@@ -38,12 +38,8 @@ import {
   timingSafeEqualBase64Url,
 } from "./utils.ts";
 
-/**
- * Every URL is derived from the request's own origin, so the same server
- * answers correctly over loopback, Tailscale Serve and a T3 Connect tunnel.
- * Client registration is stateless: a client id is its signed metadata, so an
- * unauthenticated caller cannot grow server state.
- */
+// Request-derived origins support loopback, Tailscale and tunnels.
+// Signed client metadata keeps unauthenticated registration stateless.
 
 const SIGNING_SECRET_NAME = "mcp-oauth-signing-key";
 const AUTHORIZATION_CODE_TTL_MS = 60_000;
@@ -96,7 +92,7 @@ export const authorizationServerMetadata = (
 });
 
 const parseRedirect = (value: string): URL | undefined => {
-  // No fragment, not even an empty one, which `URL.hash` reports as "" (RFC 6749 §3.1.2).
+  // URL.hash misses empty fragments, which RFC 6749 §3.1.2 also forbids.
   if (value.length > MAX_REDIRECT_URI_LENGTH || value.includes("#")) return undefined;
   try {
     const url = new URL(value);
@@ -109,10 +105,7 @@ const parseRedirect = (value: string): URL | undefined => {
   }
 };
 
-/**
- * Loopback redirects match on everything but the port (RFC 8252 §7.3), since
- * CLI agents listen on whatever port is free; https redirects match exactly.
- */
+/** Loopback redirects ignore port (RFC 8252 §7.3); HTTPS redirects match exactly. */
 export const redirectMatches = (registered: string, presented: string): boolean => {
   const left = parseRedirect(registered);
   const right = parseRedirect(presented);
@@ -288,8 +281,8 @@ const make = Effect.gen(function* () {
       ]),
     );
 
-  const register: McpOAuth["Service"]["register"] = (metadata) =>
-    Effect.gen(function* () {
+  const register: McpOAuth["Service"]["register"] = Effect.fn("McpOAuth.register")(
+    function* (metadata) {
       const rawName = metadata.client_name?.trim() ?? "";
       const name = (rawName.length > 0 ? rawName : DEFAULT_CLIENT_NAME).slice(
         0,
@@ -309,64 +302,60 @@ const make = Effect.gen(function* () {
             "Redirect URIs must be https, or http on localhost, 127.0.0.1 or [::1].",
         });
       }
-      // Requested grant types, scopes and token endpoint auth methods are ignored rather
-      // than rejected: RFC 7591 lets the server answer with what it supports. Claude Code
-      // asks for refresh_token, and hosted agents may ask for a client secret; every client
-      // is registered as public and proves itself with PKCE instead.
+      // RFC 7591 allows ignoring unsupported registration options; all clients use public PKCE.
       return { clientId: signClientId(name, redirectUris), name, redirectUris };
-    });
+    },
+  );
 
-  const validateAuthorization: McpOAuth["Service"]["validateAuthorization"] = ({ urls, request }) =>
-    Effect.gen(function* () {
-      const client = parseClientId(request.client_id ?? "");
-      if (client === undefined) {
-        return yield* new McpOAuthPageError({
-          description: "This sign-in link names an unknown app. Start the sign-in again from it.",
-        });
-      }
-      const redirectUri = request.redirect_uri;
-      if (
-        redirectUri === undefined ||
-        !client.redirectUris.some((registered) => redirectMatches(registered, redirectUri))
-      ) {
-        return yield* new McpOAuthPageError({
-          description: "This sign-in link sends you to an address the app did not register.",
-        });
-      }
-      const state = request.state;
-      const fail = (error: McpOAuthRedirectError["error"], description: string) =>
-        new McpOAuthRedirectError({
-          error,
-          description,
-          redirectUri,
-          ...(state === undefined ? {} : { state }),
-        });
-      if (request.response_type !== "code") {
-        return yield* fail("unsupported_response_type", "Only response_type=code is supported.");
-      }
-      const codeChallenge = request.code_challenge;
-      if (
-        request.code_challenge_method !== "S256" ||
-        codeChallenge === undefined ||
-        !CODE_CHALLENGE_PATTERN.test(codeChallenge)
-      ) {
-        return yield* fail("invalid_request", "PKCE with code_challenge_method=S256 is required.");
-      }
-      if (!sameResource(urls, request.resource)) {
-        return yield* fail(
-          "invalid_target",
-          `This server only issues tokens for ${urls.resource}.`,
-        );
-      }
-      return {
-        client,
+  const validateAuthorization: McpOAuth["Service"]["validateAuthorization"] = Effect.fn(
+    "McpOAuth.validateAuthorization",
+  )(function* ({ urls, request }) {
+    const client = parseClientId(request.client_id ?? "");
+    if (client === undefined) {
+      return yield* new McpOAuthPageError({
+        description: "This sign-in link names an unknown app. Start the sign-in again from it.",
+      });
+    }
+    const redirectUri = request.redirect_uri;
+    if (
+      redirectUri === undefined ||
+      !client.redirectUris.some((registered) => redirectMatches(registered, redirectUri))
+    ) {
+      return yield* new McpOAuthPageError({
+        description: "This sign-in link sends you to an address the app did not register.",
+      });
+    }
+    const state = request.state;
+    const fail = (error: McpOAuthRedirectError["error"], description: string) =>
+      new McpOAuthRedirectError({
+        error,
+        description,
         redirectUri,
-        codeChallenge,
-        state,
-        resource: urls.resource,
-        issuer: urls.issuer,
-      } satisfies AuthorizationRequest;
-    });
+        ...(state === undefined ? {} : { state }),
+      });
+    if (request.response_type !== "code") {
+      return yield* fail("unsupported_response_type", "Only response_type=code is supported.");
+    }
+    const codeChallenge = request.code_challenge;
+    if (
+      request.code_challenge_method !== "S256" ||
+      codeChallenge === undefined ||
+      !CODE_CHALLENGE_PATTERN.test(codeChallenge)
+    ) {
+      return yield* fail("invalid_request", "PKCE with code_challenge_method=S256 is required.");
+    }
+    if (!sameResource(urls, request.resource)) {
+      return yield* fail("invalid_target", `This server only issues tokens for ${urls.resource}.`);
+    }
+    return {
+      client,
+      redirectUri,
+      codeChallenge,
+      state,
+      resource: urls.resource,
+      issuer: urls.issuer,
+    } satisfies AuthorizationRequest;
+  });
 
   const approvingBrowserSession: McpOAuth["Service"]["approvingBrowserSession"] = (
     request,
@@ -383,73 +372,72 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => undefined),
     );
 
-  const mintCode = (authorization: AuthorizationRequest, access: AuthMcpClientAccess) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const code = Buffer.from(yield* crypto.randomBytes(32).pipe(Effect.orDie)).toString(
-        "base64url",
-      );
-      yield* Ref.update(codes, (current) => {
-        const next = new Map(
-          Array.from(current).filter(([, pending]) => pending.expiresAtMs > now),
-        );
-        next.set(code, {
-          clientId: authorization.client.clientId,
-          clientName: authorization.client.name,
-          redirectUri: authorization.redirectUri,
-          codeChallenge: authorization.codeChallenge,
-          resource: authorization.resource,
-          access,
-          expiresAtMs: now + AUTHORIZATION_CODE_TTL_MS,
-        });
-        return next;
+  const mintCode = Effect.fn("McpOAuth.mintCode")(function* (
+    authorization: AuthorizationRequest,
+    access: AuthMcpClientAccess,
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    const code = Buffer.from(yield* crypto.randomBytes(32).pipe(Effect.orDie)).toString(
+      "base64url",
+    );
+    yield* Ref.update(codes, (current) => {
+      const next = new Map(Array.from(current).filter(([, pending]) => pending.expiresAtMs > now));
+      next.set(code, {
+        clientId: authorization.client.clientId,
+        clientName: authorization.client.name,
+        redirectUri: authorization.redirectUri,
+        codeChallenge: authorization.codeChallenge,
+        resource: authorization.resource,
+        access,
+        expiresAtMs: now + AUTHORIZATION_CODE_TTL_MS,
       });
-      return code;
+      return next;
     });
+    return code;
+  });
 
-  const approve: McpOAuth["Service"]["approve"] = (input) =>
-    Effect.gen(function* () {
-      const { decision } = input;
-      if (decision._tag === "pairing-code") {
-        yield* environmentAuth.consumeMcpApprovalCode(decision.code, decision.access).pipe(
-          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (cause) =>
-            Effect.logError("MCP approval code check failed.", { cause }).pipe(
-              Effect.andThen(
-                Effect.fail(
-                  new McpOAuthPageError({
-                    description: "The code could not be checked. Try again.",
-                  }),
-                ),
+  const approve: McpOAuth["Service"]["approve"] = Effect.fn("McpOAuth.approve")(function* (input) {
+    const { decision } = input;
+    if (decision._tag === "pairing-code") {
+      yield* environmentAuth.consumeMcpApprovalCode(decision.code, decision.access).pipe(
+        Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (cause) =>
+          Effect.logError("MCP approval code check failed.", { cause }).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new McpOAuthPageError({
+                  description: "The code could not be checked. Try again.",
+                }),
               ),
             ),
           ),
-        );
-      } else {
-        const session = yield* approvingBrowserSession(input.request, input.authorization);
-        if (
-          session === undefined ||
-          !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
-          !EnvironmentAuth.mcpClientScopes(decision.access).every((scope) =>
-            session.scopes.includes(scope),
-          )
-        ) {
-          return yield* new McpOAuthPageError({
-            description: "Your session cannot approve this request. Enter a pairing code instead.",
-          });
-        }
+        ),
+      );
+    } else {
+      const session = yield* approvingBrowserSession(input.request, input.authorization);
+      if (
+        session === undefined ||
+        !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
+        !EnvironmentAuth.mcpClientScopes(decision.access).every((scope) =>
+          session.scopes.includes(scope),
+        )
+      ) {
+        return yield* new McpOAuthPageError({
+          description: "Your session cannot approve this request. Enter a pairing code instead.",
+        });
       }
-      const code = yield* mintCode(input.authorization, decision.access);
-      yield* Effect.logInfo("Approved an MCP client sign-in.", {
-        client: input.authorization.client.name,
-        access: decision.access,
-        method: decision._tag,
-      });
-      return redirectWith(input.authorization.redirectUri, {
-        code,
-        state: input.authorization.state,
-        iss: input.authorization.issuer,
-      });
+    }
+    const code = yield* mintCode(input.authorization, decision.access);
+    yield* Effect.logInfo("Approved an MCP client sign-in.", {
+      client: input.authorization.client.name,
+      access: decision.access,
+      method: decision._tag,
     });
+    return redirectWith(input.authorization.redirectUri, {
+      code,
+      state: input.authorization.state,
+      iss: input.authorization.issuer,
+    });
+  });
 
   const deny: McpOAuth["Service"]["deny"] = (authorization) =>
     redirectWith(authorization.redirectUri, {
@@ -458,8 +446,8 @@ const make = Effect.gen(function* () {
       iss: authorization.issuer,
     });
 
-  const exchangeCode: McpOAuth["Service"]["exchangeCode"] = ({ request, urls, token }) =>
-    Effect.gen(function* () {
+  const exchangeCode: McpOAuth["Service"]["exchangeCode"] = Effect.fn("McpOAuth.exchangeCode")(
+    function* ({ request, urls, token }) {
       const fail = (error: AuthMcpTokenError["error"], description: string) =>
         new AuthMcpTokenError({ error, error_description: description });
       if (token.grant_type !== "authorization_code") {
@@ -517,7 +505,8 @@ const make = Effect.gen(function* () {
         expires_in: Math.max(0, Math.floor((issued.expiresAt.epochMilliseconds - now) / 1000)),
         scope: encodeOAuthScope(EnvironmentAuth.mcpClientScopes(pending.access)),
       };
-    });
+    },
+  );
 
   return McpOAuth.of({
     register,
@@ -538,35 +527,38 @@ export const layerMcpClientAuthenticator = Layer.effect(
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const environmentId = yield* environment.getEnvironmentId;
     return McpHttpServer.McpClientAuthenticator.of({
-      authenticate: (request) =>
-        environmentAuth.authenticateMcpClient(request).pipe(
-          Effect.flatMap((client) =>
-            Clock.currentTimeMillis.pipe(
-              Effect.map((issuedAt): McpInvocationContext.McpInvocationScope => ({
-                environmentId,
-                requestNamespace: `client:${client.sessionId}`,
-                thread: undefined,
-                client: {
-                  sessionId: client.sessionId,
-                  label: client.label,
-                  access: client.access,
-                },
-                capabilities: new Set<McpInvocationContext.McpCapability>([
-                  "orchestration",
-                  "worktree",
-                  "pull-requests",
-                ]),
-                issuedAt,
-              })),
+      authenticate: Effect.fn("McpHttpServer.McpClientAuthenticator.authenticate")(
+        function (request) {
+          return environmentAuth.authenticateMcpClient(request).pipe(
+            Effect.flatMap((client) =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map((issuedAt): McpInvocationContext.McpInvocationScope => ({
+                  environmentId,
+                  requestNamespace: `client:${client.sessionId}`,
+                  thread: undefined,
+                  client: {
+                    sessionId: client.sessionId,
+                    label: client.label,
+                    access: client.access,
+                  },
+                  capabilities: new Set<McpInvocationContext.McpCapability>([
+                    "orchestration",
+                    "worktree",
+                    "pull-requests",
+                  ]),
+                  issuedAt,
+                })),
+              ),
             ),
-          ),
-          Effect.catch((error) =>
-            (EnvironmentAuth.isServerAuthCredentialError(error)
-              ? Effect.void
-              : Effect.logWarning("MCP client authentication failed.", { cause: error })
-            ).pipe(Effect.as(undefined)),
-          ),
-        ),
+            Effect.catch((error) =>
+              (EnvironmentAuth.isServerAuthCredentialError(error)
+                ? Effect.void
+                : Effect.logWarning("MCP client authentication failed.", { cause: error })
+              ).pipe(Effect.as(undefined)),
+            ),
+          );
+        },
+      ),
     });
   }),
 );

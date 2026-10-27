@@ -46,6 +46,7 @@ const AuthFile = Schema.Struct({
     Schema.Struct({
       chatgpt_account_id: Schema.optional(Schema.String),
       chatgpt_plan_type: Schema.optional(Schema.String),
+      plan_type: Schema.optional(Schema.String),
     }),
   ),
 });
@@ -121,8 +122,7 @@ const decodeClaudeUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(Claud
 const decodeCodexUsage = Schema.decodeUnknownEffect(Schema.fromJsonString(CodexUsage));
 const isUsageLimitSourceError = Schema.is(UsageLimitSourceError);
 
-// Codes that mean the certificate chain is not trusted, which an extra CA can fix. Expired or
-// mismatched certificates are reported by code only.
+// Extra CAs can fix untrusted chains; expiry/hostname failures report codes only.
 const UNTRUSTED_CERTIFICATE_CODES = new Set([
   "DEPTH_ZERO_SELF_SIGNED_CERT",
   "SELF_SIGNED_CERT_IN_CHAIN",
@@ -130,7 +130,7 @@ const UNTRUSTED_CERTIFICATE_CODES = new Set([
   "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
 ]);
 
-/** The Node error code under a failed fetch, which wraps it in a generic `TypeError`. */
+// fetch wraps Node error codes in generic TypeErrors.
 const nodeErrorCode = (cause: unknown) => {
   for (let error = cause, depth = 0; error instanceof Error && depth < 3; depth += 1) {
     const code = (error as { readonly code?: unknown }).code;
@@ -140,8 +140,7 @@ const nodeErrorCode = (cause: unknown) => {
   return undefined;
 };
 
-// Hub responses and nested error messages can carry keys or tokens, so only the failure's kind,
-// HTTP status, or Node error code reaches the client.
+// Hub responses can contain credentials; expose only failure kind, HTTP status or Node code.
 const describeManagementFailure = (error: unknown) => {
   if (Cause.isTimeoutError(error)) return "The hub did not answer within 15 seconds.";
   if (HttpClientError.isHttpClientError(error)) {
@@ -252,7 +251,12 @@ export const makeCliproxyApi = Effect.gen(function* () {
               ? { "Chatgpt-Account-Id": account.id_token.chatgpt_account_id }
               : {}),
           }
-        : { Authorization: "Bearer $TOKEN$", "anthropic-beta": "oauth-2025-04-20" };
+        : {
+            Authorization: "Bearer $TOKEN$",
+            "anthropic-beta": "oauth-2025-04-20",
+            // The OAuth usage endpoint can return 429 without a Claude Code user agent.
+            "User-Agent": "claude-code/2.1.273",
+          };
     const raw = yield* management(config, "api-call", {
       auth_index: account.auth_index,
       method: data === undefined ? "GET" : "POST",
@@ -353,14 +357,16 @@ export const makeCliproxyApi = Effect.gen(function* () {
           : null;
       const available = yield* credits(config, account).pipe(Effect.orElseSucceed(() => undefined));
       const next = available?.[0];
+      const planType =
+        usage.plan_type ?? account.id_token?.plan_type ?? account.id_token?.chatgpt_plan_type;
       return {
         ...base,
-        plan: codexPlanLabel(usage.plan_type ?? account.id_token?.chatgpt_plan_type),
+        plan: codexPlanLabel(planType),
         usageLimits: {
           ...codexRateLimitsToLimits({
             checkedAt,
             snapshot: {
-              planType: usage.plan_type ?? null,
+              planType: planType ?? null,
               primary: toWindow(usage.rate_limit?.primary_window),
               secondary: toWindow(usage.rate_limit?.secondary_window),
             },
@@ -483,26 +489,27 @@ export const makeCliproxyApi = Effect.gen(function* () {
   ): Effect.fn.Return<UsageLimitSourceAccountActionResult, UsageLimitSourceError> {
     const operation = Effect.gen(function* () {
       const files = yield* authFiles(config);
-      const findTarget = (entries: readonly (typeof AuthFile.Type)[]) =>
-        Effect.gen(function* () {
-          const matches = entries.filter((entry) => entry.auth_index === input.authIndex);
-          const file = matches[0];
-          if (
-            matches.length !== 1 ||
-            !file ||
-            file.id !== input.accountId ||
-            file.provider !== "codex" ||
-            file.runtime_only ||
-            !file.name ||
-            typeof file.disabled !== "boolean"
-          ) {
-            return yield* new UsageLimitSourceError({
-              detail:
-                "The Codex credential changed or cannot be managed safely. Refresh and try again.",
-            });
-          }
-          return file;
-        });
+      const findTarget = Effect.fn("CliproxyApi.findTarget")(function* (
+        entries: readonly (typeof AuthFile.Type)[],
+      ) {
+        const matches = entries.filter((entry) => entry.auth_index === input.authIndex);
+        const file = matches[0];
+        if (
+          matches.length !== 1 ||
+          !file ||
+          file.id !== input.accountId ||
+          file.provider !== "codex" ||
+          file.runtime_only ||
+          !file.name ||
+          typeof file.disabled !== "boolean"
+        ) {
+          return yield* new UsageLimitSourceError({
+            detail:
+              "The Codex credential changed or cannot be managed safely. Refresh and try again.",
+          });
+        }
+        return file;
+      });
       const file = yield* findTarget(files);
       const accountId = (entry: typeof AuthFile.Type) =>
         entry.id_token?.chatgpt_account_id ?? entry.chatgpt_account_id ?? entry.account_id ?? "";
@@ -520,35 +527,36 @@ export const makeCliproxyApi = Effect.gen(function* () {
         }
         return current;
       });
-      const setDisabled = (expectedDisabled: boolean) =>
-        Effect.gen(function* () {
-          const current = yield* currentTarget;
-          if (current.disabled !== expectedDisabled) {
-            return yield* new UsageLimitSourceError({
-              detail: "The credential state changed. Refresh and try again.",
-            });
-          }
-          yield* management(
-            config,
-            "auth-files/status",
-            {
-              name: file.id,
-              disabled: !expectedDisabled,
-              auth_index: file.auth_index,
-              cpamp_physical_name: file.name,
-              cpamp_runtime_id: file.id,
-              cpamp_provider: "codex",
-              ...(accountId(file) ? { cpamp_account_id: accountId(file) } : {}),
-              ...(snapshot(file) ? { cpamp_account_snapshot: snapshot(file) } : {}),
-            },
-            { method: "PATCH" },
-          );
-          if ((yield* currentTarget).disabled !== !expectedDisabled) {
-            return yield* new UsageLimitSourceError({
-              detail: "CPA did not confirm the credential status. Refresh to check.",
-            });
-          }
-        });
+      const setDisabled = Effect.fn("CliproxyApi.setDisabled")(function* (
+        expectedDisabled: boolean,
+      ) {
+        const current = yield* currentTarget;
+        if (current.disabled !== expectedDisabled) {
+          return yield* new UsageLimitSourceError({
+            detail: "The credential state changed. Refresh and try again.",
+          });
+        }
+        yield* management(
+          config,
+          "auth-files/status",
+          {
+            name: file.id,
+            disabled: !expectedDisabled,
+            auth_index: file.auth_index,
+            cpamp_physical_name: file.name,
+            cpamp_runtime_id: file.id,
+            cpamp_provider: "codex",
+            ...(accountId(file) ? { cpamp_account_id: accountId(file) } : {}),
+            ...(snapshot(file) ? { cpamp_account_snapshot: snapshot(file) } : {}),
+          },
+          { method: "PATCH" },
+        );
+        if ((yield* currentTarget).disabled !== !expectedDisabled) {
+          return yield* new UsageLimitSourceError({
+            detail: "CPA did not confirm the credential status. Refresh to check.",
+          });
+        }
+      });
       if (input.action.type === "toggle") {
         yield* setDisabled(input.action.expectedDisabled);
         return {
@@ -556,18 +564,17 @@ export const makeCliproxyApi = Effect.gen(function* () {
         };
       }
 
-      const document = (entry: typeof AuthFile.Type) =>
-        Effect.gen(function* () {
-          if (!entry.name)
-            return yield* new UsageLimitSourceError({
-              detail: "A Codex credential has no physical file name.",
-            });
-          const body = yield* management(
-            config,
-            `auth-files/download?name=${encodeURIComponent(entry.name)}`,
-          );
-          return yield* decodeAuthDocument(body);
-        });
+      const document = Effect.fn("CliproxyApi.document")(function* (entry: typeof AuthFile.Type) {
+        if (!entry.name)
+          return yield* new UsageLimitSourceError({
+            detail: "A Codex credential has no physical file name.",
+          });
+        const body = yield* management(
+          config,
+          `auth-files/download?name=${encodeURIComponent(entry.name)}`,
+        );
+        return yield* decodeAuthDocument(body);
+      });
       const stored = yield* document(file);
       const identifier = identifyCliproxyAccounts(
         files.filter((entry) => entry.provider === "codex"),
@@ -625,23 +632,22 @@ export const makeCliproxyApi = Effect.gen(function* () {
         },
       ];
       const identityHeader = encodeURIComponent(yield* encodeJson(identity));
-      const patchPrefix = (value: string) =>
-        Effect.gen(function* () {
-          yield* management(
-            config,
-            "auth-files/fields",
-            { name: file.id, prefix: value },
-            {
-              method: "PATCH",
-              headers: { "X-CPAMP-Auth-File-Mutation-Identity": identityHeader },
-            },
-          );
-          if (((yield* document(file)).prefix ?? "").trim() !== value) {
-            return yield* new UsageLimitSourceError({
-              detail: "The credential prefix was not saved.",
-            });
-          }
-        });
+      const patchPrefix = Effect.fn("CliproxyApi.patchPrefix")(function* (value: string) {
+        yield* management(
+          config,
+          "auth-files/fields",
+          { name: file.id, prefix: value },
+          {
+            method: "PATCH",
+            headers: { "X-CPAMP-Auth-File-Mutation-Identity": identityHeader },
+          },
+        );
+        if (((yield* document(file)).prefix ?? "").trim() !== value) {
+          return yield* new UsageLimitSourceError({
+            detail: "The credential prefix was not saved.",
+          });
+        }
+      });
       let prefixAttempted = false;
       let enableAttempted = false;
       const result = yield* Effect.gen(function* () {

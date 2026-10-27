@@ -75,8 +75,8 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
   Effect.gen(function* () {
     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
     return ProviderAdapterRegistryV2.of({
-      get: (instanceId) =>
-        instances.getInstance(instanceId).pipe(
+      get: Effect.fn("ProviderAdapterRegistryV2.get")(function (instanceId) {
+        return instances.getInstance(instanceId).pipe(
           Effect.flatMap((instance) => {
             if (instance === undefined)
               return new ProviderAdapterRegistryLookupError({ instanceId });
@@ -131,31 +131,32 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
               },
             } satisfies ProviderAdapter.ProviderAdapterV2["Service"]);
           }),
-        ),
-      list: () =>
-        instances.listInstances.pipe(
+        );
+      }),
+      list: Effect.fn("ProviderAdapterRegistryV2.list")(function () {
+        return instances.listInstances.pipe(
           Effect.map((available) => available.map((instance) => instance.instanceId)),
-        ),
-      getMetadata: (instanceId) =>
-        Effect.gen(function* () {
-          const instance = yield* instances.getInstance(instanceId);
-          if (instance === undefined) {
-            return yield* new ProviderAdapterRegistryLookupError({ instanceId });
-          }
-          const capabilities = yield* instance.orchestrationAdapter
-            .getCapabilities()
-            .pipe(
-              Effect.mapError(
-                (cause) => new ProviderAdapterRegistryMetadataError({ instanceId, cause }),
-              ),
-            );
-          return {
-            driver: instance.driverKind,
-            continuationKey: instance.continuationIdentity.continuationKey,
-            enabled: instance.enabled,
-            capabilities,
-          };
-        }),
+        );
+      }),
+      getMetadata: Effect.fn("ProviderAdapterRegistry.getMetadata")(function* (instanceId) {
+        const instance = yield* instances.getInstance(instanceId);
+        if (instance === undefined) {
+          return yield* new ProviderAdapterRegistryLookupError({ instanceId });
+        }
+        const capabilities = yield* instance.orchestrationAdapter
+          .getCapabilities()
+          .pipe(
+            Effect.mapError(
+              (cause) => new ProviderAdapterRegistryMetadataError({ instanceId, cause }),
+            ),
+          );
+        return {
+          driver: instance.driverKind,
+          continuationKey: instance.continuationIdentity.continuationKey,
+          enabled: instance.enabled,
+          capabilities,
+        };
+      }),
     });
   }),
 );
@@ -167,14 +168,13 @@ function makeRegistry(
   adapters: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]>,
 ): ProviderAdapterRegistryV2Shape {
   return {
-    get: (instanceId) =>
-      Effect.gen(function* () {
-        const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
-        if (!adapter) {
-          return yield* new ProviderAdapterRegistryLookupError({ instanceId });
-        }
-        return adapter;
-      }),
+    get: Effect.fn("ProviderAdapterRegistry.get")(function* (instanceId) {
+      const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
+      if (!adapter) {
+        return yield* new ProviderAdapterRegistryLookupError({ instanceId });
+      }
+      return adapter;
+    }),
     list: () => Effect.succeed(adapters.map((adapter) => adapter.instanceId)),
   };
 }
@@ -318,20 +318,20 @@ const buildAdaptersFromConfigMap = Effect.fn("ProviderAdapterRegistry.buildAdapt
   },
 );
 
-export function makeRegistryFromConfigMap<R>(input: {
+export const makeRegistryFromConfigMap = Effect.fn(
+  "ProviderAdapterRegistry.makeRegistryFromConfigMap",
+)(function* <R>(input: {
   readonly drivers: ReadonlyArray<AnyProviderAdapterDriver<R>>;
   readonly configMap: ProviderInstanceConfigMap;
-}): Effect.Effect<
+}): Effect.fn.Return<
   ProviderAdapterRegistryV2Shape,
   ProviderAdapterRegistryBuildError,
   R | Scope.Scope
 > {
-  return Effect.gen(function* () {
-    const parentScope = yield* Effect.scope;
-    const entries = yield* buildAdaptersFromConfigMap({ ...input, parentScope });
-    return makeRegistry(Array.from(entries.values()).map((entry) => entry.adapter));
-  });
-}
+  const parentScope = yield* Effect.scope;
+  const entries = yield* buildAdaptersFromConfigMap({ ...input, parentScope });
+  return makeRegistry(Array.from(entries.values()).map((entry) => entry.adapter));
+});
 
 export function layerFromDrivers<R>(input: {
   readonly drivers: ReadonlyArray<AnyProviderAdapterDriver<R>>;
@@ -344,21 +344,3 @@ export function layerFromDrivers<R>(input: {
     ),
   ) as Layer.Layer<ProviderAdapterRegistryV2, ProviderAdapterRegistryBuildError, R>;
 }
-
-const layerFromProviderAdapter: Layer.Layer<
-  ProviderAdapterRegistryV2,
-  never,
-  ProviderAdapter.ProviderAdapterV2
-> = Layer.effect(
-  ProviderAdapterRegistryV2,
-  Effect.gen(function* () {
-    const adapter = yield* ProviderAdapter.ProviderAdapterV2;
-    return ProviderAdapterRegistryV2.of({
-      get: (instanceId) =>
-        adapter.instanceId === instanceId
-          ? Effect.succeed(adapter)
-          : Effect.fail(new ProviderAdapterRegistryLookupError({ instanceId })),
-      list: () => Effect.succeed([adapter.instanceId]),
-    } satisfies ProviderAdapterRegistryV2Shape);
-  }),
-);

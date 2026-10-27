@@ -22,6 +22,10 @@ export interface EnvironmentOption {
   machine: EnvironmentMachineKind;
 }
 
+/** "Add to another machine" stays muted until hovered: easy to find, quieter than the machines. */
+export const ADD_TO_MACHINE_LABEL_CLASS =
+  "flex min-w-0 items-center gap-1.5 opacity-55 in-data-highlighted:opacity-100 in-data-popup-open:opacity-100";
+
 export const EnvMode = Schema.Literals(["local", "worktree"]);
 export type EnvMode = typeof EnvMode.Type;
 
@@ -75,8 +79,7 @@ export function shouldShowComposerContextStrip(input: {
   );
 }
 
-// Labels collapse to icons when the strip's content no longer fits. A small
-// hysteresis on the way back out keeps the boundary from flapping.
+// Hysteresis prevents labels and icons from flapping at the width boundary.
 const CONTEXT_STRIP_COMPACT_EXPAND_HYSTERESIS_PX = 16;
 
 export function resolveContextStripLabelsCompact(input: {
@@ -215,11 +218,10 @@ export function resolveBranchTriggerLabel(input: {
     return "Select ref";
   }
   if (effectiveEnvMode === "worktree" && !activeWorktreePath) {
-    const baseRef =
-      startFromOrigin && resolvedActiveBranchIsRemote === false
-        ? `origin/${resolvedActiveBranch}`
-        : resolvedActiveBranch;
-    return `From ${baseRef}`;
+    // Only the server can determine a local branch's configured remote.
+    return startFromOrigin && resolvedActiveBranchIsRemote === false
+      ? `From ${resolvedActiveBranch} (remote)`
+      : `From ${resolvedActiveBranch}`;
   }
   return resolvedActiveBranch;
 }

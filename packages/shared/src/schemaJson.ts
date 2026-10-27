@@ -17,8 +17,7 @@ interface SchemaDiagnosticIssue {
   readonly path: ReadonlyArray<PropertyKey>;
 }
 
-// Schema's default formatter includes actual values. These diagnostics cross
-// process and UI boundaries, so retain only issue kinds and bounded paths.
+// Default Schema diagnostics include values; expose only issue kinds and bounded paths across process/UI boundaries.
 
 function truncateDiagnostic(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 3)}...`;
@@ -158,14 +157,10 @@ export const formatSchemaError = (cause: Cause.Cause<Schema.SchemaError>) => {
 const decodeJsonString = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 const parseLenientJsonGetter = SchemaGetter.transformEffect((input: string) => {
+  // Match comments together so URLs stay inside blocks; whitespace keeps adjacent tokens apart.
   let stripped = input.replace(
-    /("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g,
-    (match, stringLiteral: string | undefined) => (stringLiteral ? match : ""),
-  );
-
-  stripped = stripped.replace(
-    /("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\//g,
-    (match, stringLiteral: string | undefined) => (stringLiteral ? match : ""),
+    /("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+    (match, stringLiteral: string | undefined) => (stringLiteral ? match : " "),
   );
 
   stripped = stripped.replace(

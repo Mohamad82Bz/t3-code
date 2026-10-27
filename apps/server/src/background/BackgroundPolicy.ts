@@ -208,7 +208,7 @@ function computeSnapshot(input: {
   };
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.fn("background.policy.make")(function* () {
   const hostPowerMonitor = yield* HostPowerMonitor.HostPowerMonitor;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
@@ -289,16 +289,17 @@ export const make = Effect.fn("background.policy.make")(function* () {
   const hasDemand: BackgroundPolicy["Service"]["hasDemand"] = (scope) =>
     Effect.map(snapshot, (current) => current.activeScopeKeys.includes(scopeKey(scope)));
 
-  const shouldRunScopeWork: BackgroundPolicy["Service"]["shouldRunScopeWork"] = (scope) =>
-    Effect.gen(function* () {
-      const [current, settings] = yield* Effect.all([snapshot, backgroundActivitySettings]);
-      if (isHostConstrained(current.hostPower, settings)) {
-        return false;
-      }
-      return current.leases.some((lease) =>
-        leaseMayRunScopedWork(lease, scope, current.updatedAt, settings),
-      );
-    });
+  const shouldRunScopeWork: BackgroundPolicy["Service"]["shouldRunScopeWork"] = Effect.fn(
+    "BackgroundPolicy.shouldRunScopeWork",
+  )(function* (scope) {
+    const [current, settings] = yield* Effect.all([snapshot, backgroundActivitySettings]);
+    if (isHostConstrained(current.hostPower, settings)) {
+      return false;
+    }
+    return current.leases.some((lease) =>
+      leaseMayRunScopedWork(lease, scope, current.updatedAt, settings),
+    );
+  });
 
   const shouldRunOpportunisticWork = Effect.map(
     snapshot,

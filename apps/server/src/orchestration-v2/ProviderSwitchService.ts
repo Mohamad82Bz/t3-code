@@ -64,8 +64,8 @@ export const layer: Layer.Layer<
   Effect.gen(function* () {
     const adapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
     return ProviderSwitchServiceV2.of({
-      plan: ({ projection, targetModelSelection }) =>
-        Effect.gen(function* () {
+      plan: Effect.fn("ProviderSwitchService.plan")(
+        function* ({ projection, targetModelSelection }) {
           const current = projection.thread.modelSelection;
           const instanceChanged = current.instanceId !== targetModelSelection.instanceId;
           const modelChanged = current.model !== targetModelSelection.model;
@@ -181,8 +181,7 @@ export const layer: Layer.Layer<
             .filter((session) => {
               if (!isLiveProviderSession(session)) return false;
               if (transition.type === "restart_and_resume") {
-                // Other live records may serve pooled or delegated bindings;
-                // only the session being replaced is released.
+                // Release only the replaced session; peers can serve pooled or delegated bindings.
                 return session.id === currentSession?.id;
               }
               if (transition.type === "create_with_handoff") {
@@ -198,16 +197,19 @@ export const layer: Layer.Layer<
             releaseProviderSessionIds,
             transition,
           };
-        }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ProviderSwitchPlanError({
-                threadId: projection.thread.id,
-                targetProviderInstanceId: targetModelSelection.instanceId,
-                cause,
-              }),
+        },
+        (effect, { projection, targetModelSelection }) =>
+          effect.pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderSwitchPlanError({
+                  threadId: projection.thread.id,
+                  targetProviderInstanceId: targetModelSelection.instanceId,
+                  cause,
+                }),
+            ),
           ),
-        ),
+      ),
     });
   }),
 );

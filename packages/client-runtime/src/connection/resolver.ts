@@ -10,7 +10,11 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { appendClientConnectionParams } from "../authorization/remote.ts";
+import {
+  appendClientConnectionParams,
+  type ClientOwnerParams,
+  readClientOwnerParams,
+} from "../authorization/remote.ts";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import {
@@ -27,9 +31,9 @@ import {
   profileMissingError,
 } from "./errors.ts";
 import {
-  GitHubRoutingPermissions,
-  gitHubRoutingConnectionKey,
-} from "./githubRoutingPermissions.ts";
+  PullRequestRoutingPermissions,
+  pullRequestRoutingConnectionKey,
+} from "./pullRequestRoutingPermissions.ts";
 import type {
   BearerConnectionTarget,
   ConnectionTarget,
@@ -74,12 +78,13 @@ const isBearerCredential = Schema.is(BearerConnectionCredential);
 function primarySocketUrl(
   target: PrimaryConnectionTarget,
   clientMetadata: AuthClientPresentationMetadata | undefined,
+  owners: ClientOwnerParams,
 ): string {
   const url = new URL(target.wsBaseUrl);
   if (url.pathname === "" || url.pathname === "/") {
     url.pathname = "/ws";
   }
-  appendClientConnectionParams(url, clientMetadata, "direct");
+  appendClientConnectionParams(url, clientMetadata, "direct", owners);
   return url.toString();
 }
 
@@ -97,7 +102,7 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
         environmentId: target.environmentId,
         label: target.label,
         httpBaseUrl: target.httpBaseUrl,
-        socketUrl: primarySocketUrl(target, presentation.metadata),
+        socketUrl: primarySocketUrl(target, presentation.metadata, yield* readClientOwnerParams),
         httpAuthorization: null,
         target,
       } satisfies PreparedConnection;
@@ -245,10 +250,10 @@ const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(funct
       target: prepared.bootstrap.target,
     });
     if (
-      gitHubRoutingConnectionKey(entry) !==
-      gitHubRoutingConnectionKey({ ...entry, profile: Option.some(preparedProfile) })
+      pullRequestRoutingConnectionKey(entry) !==
+      pullRequestRoutingConnectionKey({ ...entry, profile: Option.some(preparedProfile) })
     ) {
-      const permissions = yield* GitHubRoutingPermissions;
+      const permissions = yield* PullRequestRoutingPermissions;
       yield* permissions.forget(target.environmentId);
     }
     yield* profiles.put(preparedProfile);
@@ -270,7 +275,7 @@ const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(funct
   });
 });
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const primary = yield* makePrimaryBroker();
   const bearer = yield* makeBearerBroker();

@@ -22,7 +22,7 @@ Choose **Float device over chat** in the toolbar to keep watching and tapping th
 device in a small window while the right panel shows something else; drag the
 window by its handle, resize it from any edge, and use **Open in right panel**
 to bring it back.
-Turn off the device hub in **Settings → Integrations → Devices** to stop the
+Turn off the device hub in **Settings → Devices** to stop the
 helper processes; simulators and emulators keep running until you power them
 off.
 
@@ -31,7 +31,15 @@ macOS with Xcode. Android needs the SDK Platform-Tools, Android Emulator,
 and Command-line Tools (latest), plus a virtual device created in Android
 Studio's Device Manager. T3 Code detects standard SDK locations; set
 `ANDROID_HOME` for a custom location. The panel explains missing dependencies.
-After installing them, restart the environment server and refresh devices.
+After installing SDK tools, restart the environment server and refresh devices.
+
+Android emulator video also needs `ffmpeg` with the libx264 encoder on the device
+host's PATH, or an executable selected by `SERVE_EMU_FFMPEG` on that host. If
+opening an emulator reports an ffmpeg problem, install or fix the executable
+and retry opening it. After changing PATH or `SERVE_EMU_FFMPEG`, restart the
+environment server for local devices, or turn device support off and on for SSH
+devices, so the running tools inherit the new environment. Physical Android
+devices and iOS do not need ffmpeg.
 
 The screen is interactive: click and drag to touch, type while the screen is
 focused, and use the toolbar for Home, Back, and Recents on Android, rotate on
@@ -62,9 +70,11 @@ back from the device after a change.
 
 When an agent opens a device, it floats over the chat in web and desktop clients
 connected to the thread, the same way an agent-driven browser does. Turn off
-**Auto-show floating preview** in **Settings → Integrations → Browser** to open a
+**Auto-show floating preview** in **Settings → Browser** to open a
 right-panel tab instead. In the mobile app, open the agent's thread and tap the
 device button above the composer to watch the live screen and control it.
+On iOS layouts with an inspector, the device opens beside the thread. Maximize
+it to fill the screen; closing the full-screen view returns to the inspector.
 If the thread has several devices open, choose one in the viewer. Closing the
 viewer stops streaming and leaves the device available to the agent. Device
 activity also appears in the thread timeline.
@@ -76,7 +86,7 @@ once per server. Restart an existing agent session after granting access so it
 receives the device CLI environment.
 
 To keep agents away from simulators, turn off **Agent device access** in
-**Settings → Integrations → Devices**. This hides the device tools from agents
+**Settings → Devices**. This hides the device tools from agents
 started from then on; your own Device panel is unaffected.
 
 ## Remote connections
@@ -88,7 +98,7 @@ still-image stream and Android cannot show video.
 
 ## SSH device hosts
 
-In Settings → Integrations → Devices, choose the environments that should use
+In Settings → Devices, choose the environments that should use
 the host and add it under **Device hosts**. Enter an SSH alias or `user@host`, with
 an optional identity file and port. These resolve on the environment server,
 so use the SSH configuration and keys available there. Password prompts are
@@ -100,7 +110,9 @@ the environment’s own machine are skipped, since its devices are already local
 The first device listing installs pinned device tools on the host.
 Node 22 or newer and npm must be available to non-interactive SSH commands.
 T3 checks common Homebrew and Android SDK locations; custom installations need
-the appropriate PATH and ANDROID_HOME on the host.
+the appropriate PATH and ANDROID_HOME on the host. Android emulator video needs
+`ffmpeg` with libx264 on that host; physical Android devices use scrcpy and do
+not need ffmpeg.
 
 The picker identifies devices by host when several hosts are configured.
 Connections recover after interruptions. Removing a host closes its device
@@ -113,6 +125,6 @@ localhost without forwarding or another reachable address.
 
 ## Device tool updates
 
-The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. Settings → Integrations → Check device tool versions reads installed versions without installing tools or starting devices.
+The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. Settings → Devices → Check versions reads installed versions without installing tools or starting devices.
 
 To receive newer tool versions on a remote environment, update that environment's T3 server. Updating only the browser or mobile app does not update the remote server. An offline host keeps its installed files, but an update needs network access before device support can start; T3 does not fall back to an older version. Reconnect the host and use Retry if installation fails. Existing device and agent-access settings are preserved.

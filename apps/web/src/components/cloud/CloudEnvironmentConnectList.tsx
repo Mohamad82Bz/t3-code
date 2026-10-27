@@ -185,9 +185,7 @@ export function CloudEnvironmentConnectRows({
     return false;
   };
 
-  // During onboarding selection a machine saved over another route already
-  // has its own row elsewhere, and selecting it must not add a T3 Connect
-  // route as a side effect, so it is left out here.
+  // Omit machines saved over other routes; onboarding selection must not add a T3 Connect route.
   const isVisibleEnvironment = (environmentId: EnvironmentId) =>
     environmentId !== primaryEnvironmentId &&
     (showSavedEnvironments || !savedById.has(environmentId)) &&
@@ -387,7 +385,14 @@ export function CloudEnvironmentConnectRows({
             kind={machineKind}
             className="size-4 shrink-0 text-muted-foreground"
           />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{environment.label}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{environment.label}</span>
+            {unsupportedDetail !== null ? (
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {unsupportedDetail}
+              </span>
+            ) : null}
+          </span>
           <Tooltip>
             <TooltipTrigger
               render={<span tabIndex={0} />}

@@ -5,7 +5,7 @@ also lists the command IDs and defaults available in your version.
 
 ## Composer controls
 
-In **Settings → General → Send shortcut**, choose whether Enter sends, requires
+In **Settings → Chat → Send shortcut**, choose whether Enter sends, requires
 `mod+Enter` for multiline prompts, or always requires `mod+Enter`. `Shift+Enter`
 inserts a new line. This applies to the web and desktop composer at desktop widths.
 
@@ -46,7 +46,7 @@ in Settings.
 
 ## Copy pull request references
 
-With a PR open in the right panel or on the Pull Requests page, use `mod+shift+c`
+With a PR open in the right panel or on the Pull requests page, use `mod+shift+c`
 to copy its URL and `mod+shift+k` to copy its number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
@@ -150,8 +150,9 @@ shortcut; assign one in **Settings → Keybindings**.
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a
 draft. Consecutive
 actions of the same kind undo together. The notice remains available for five
-seconds after the latest action. The default shortcut skips text fields and
-terminals so native undo keeps working there.
+seconds after the latest action. Right after an action, the shortcut works even
+in a text field such as the composer. Once you type or press another key, the
+field gets its own undo back. Terminals always keep their native shortcut.
 
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
 through the pages you have visited, like a browser's back and forward buttons.

@@ -25,7 +25,7 @@ const PAGE_HEADERS = {
   "x-content-type-options": "nosniff",
 };
 
-/** OAuth responses carry codes, tokens and client ids, none of which may be cached. */
+// OAuth responses contain credentials and must not be cached.
 const noStore = HttpEffect.appendPreResponseHandler((_request, response) =>
   Effect.succeed(
     HttpServerResponse.setHeaders(response, { "cache-control": "no-store", pragma: "no-cache" }),
@@ -38,11 +38,12 @@ const requestUrls = Effect.map(HttpServerRequest.HttpServerRequest, McpOAuth.req
  * An unverified client or redirect is reported, never redirected; any other problem goes back to
  * the agent through its (verified) redirect URI.
  */
-const forwardedAuthorization = (
-  oauth: McpOAuth.McpOAuth["Service"],
-  request: AuthMcpAuthorizationRequest,
-) =>
-  Effect.gen(function* () {
+const forwardedAuthorization =
+  /* Request instrumentation already owns the span; keep this helper in that context. */
+  Effect.fnUntraced(function* (
+    oauth: McpOAuth.McpOAuth["Service"],
+    request: AuthMcpAuthorizationRequest,
+  ) {
     const urls = yield* requestUrls;
     return yield* oauth.validateAuthorization({ urls, request }).pipe(
       Effect.catchTags({

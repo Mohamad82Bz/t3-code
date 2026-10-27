@@ -1,4 +1,5 @@
 import ChatMarkdown from "./ChatMarkdown";
+import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type { PreviewAnnotationPayload, ThreadContextRecord } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
@@ -222,6 +223,15 @@ function FileContextChip(props: {
   return (
     <FileChip
       name={props.record.name}
+      svgPreview={
+        isSvgAttachment(props.record)
+          ? {
+              file: props.record.file,
+              environmentId: props.record.uploadEnvironmentId,
+              attachmentId: props.record.uploadedAttachmentId,
+            }
+          : undefined
+      }
       size={size}
       isVideo={isVideo}
       theme={resolvedTheme}
@@ -320,6 +330,16 @@ function ComposerPreviewAnnotationDetails({
         {summary}
       </div>
     </div>
+  );
+}
+
+function ComposerThreadContextChip(props: { record: ThreadContextRecord }) {
+  const { environmentId } = use(ComposerContextActionsContext);
+  return (
+    <ThreadContextChip
+      record={props.record}
+      unreadable={environmentId !== null && props.record.environmentId !== environmentId}
+    />
   );
 }
 
@@ -432,7 +452,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       canRender: (entry) => entry.kind === "thread",
       render: (entry, context) =>
         entry.kind === "thread" ? (
-          <ThreadContextChip record={entry.record} />
+          <ComposerThreadContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

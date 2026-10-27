@@ -3,6 +3,7 @@ import { DeviceToolVersions } from "../device/DeviceToolVersions";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { DeviceHostsSettings } from "./DeviceHostsSettings";
+import { EasDeviceHostsSettings } from "./EasDeviceHostsSettings";
 import {
   AuthSettingsWriteScope,
   BrowserImportFailureReason,
@@ -61,6 +62,7 @@ import {
   platformSetupStatus,
   deviceHubDescription,
   agentDeviceDescription,
+  DeviceHostDiagnostics,
 } from "~/components/device/DeviceSetup";
 import { isElectron } from "../../env";
 
@@ -116,6 +118,7 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { AdvancedSettings } from "./AdvancedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
 import type { ImportOutcome } from "./browserImportWizard.logic";
@@ -153,7 +156,7 @@ export async function clearBrowserProfileData(
   ]);
 }
 
-export function browserProfileRemovalAvailable(
+function browserProfileRemovalAvailable(
   bridgeAvailable: boolean,
   environmentsReady: boolean,
   environmentCount: number,
@@ -174,11 +177,8 @@ const APPEARANCE_LABELS: Readonly<Record<PreviewAppearancePreference, string>> =
 
 const zoomLabel = (zoomFactor: number) => `${Math.round(zoomFactor * 100)}%`;
 
-/**
- * IPC flattens the failure to its message, so the reason token travels inside
- * it. Anything unrecognised reads as a plain read failure rather than leaking
- * the raw message into a toast.
- */
+/** IPC carries reason tokens inside messages; treat unknown tokens as read failures without exposing raw
+ * text. */
 class ProfileLimitReachedError extends Error {
   constructor() {
     super("Browser profile limit reached.");
@@ -224,9 +224,7 @@ async function importBrowserCookiesIntoTarget(
               (profile) => profile.id === input.target.profileId,
             );
             if (existing) return current;
-            // The wizard refuses a new target at the cap, but the cap can be
-            // reached while the import runs; the updater sees the newest
-            // settings, so this is the check that holds.
+            // The profile cap may be reached during import; enforce it against the updater's latest settings.
             if (current.browserProfiles.length >= BROWSER_PROFILE_MAX_COUNT) {
               throw new ProfileLimitReachedError();
             }
@@ -247,9 +245,8 @@ async function importBrowserCookiesIntoTarget(
             persisted.browserProfiles.find((profile) => profile.id === input.target.profileId)
               ?.name ?? source.name;
         } catch (cause) {
-          // This target id belongs only to the attempted new profile. Clear
-          // its partition so a failed registration cannot strand imported
-          // cookies behind a profile that disappears on restart.
+          // Clear the new target's partition on registration failure so imported cookies cannot outlive its
+          // profile.
           await clearBrowserProfileData(bridge, [environmentId], input.target.profileId).catch(
             () => undefined,
           );
@@ -286,11 +283,7 @@ const viewportSelectValue = (viewport: PreviewViewportSetting): string => {
   return RESPONSIVE_VALUE;
 };
 
-/**
- * The trigger renders this rather than a bare `SelectValue`, which would fall
- * back to printing the raw stored value ("fill") because the options are built
- * inline instead of from an `items` map.
- */
+/** Inline options lack an items map; bare SelectValue would display the stored fill token. */
 const viewportSelectLabel = (viewport: PreviewViewportSetting): string => {
   const value = viewportSelectValue(viewport);
   if (value === FILL_VALUE) return "Fill panel";
@@ -348,9 +341,7 @@ function BrowserViewportSetting({ disabled }: { readonly disabled: boolean }) {
     });
   };
 
-  // Committed on blur rather than per keystroke: typing "2560" passes through
-  // "256", which is a legal dimension, so an onValueChange handler would
-  // persist that intermediate size and churn the settings file on every key.
+  // Commit on blur to avoid persisting valid intermediate dimensions and rewriting settings per keystroke.
   const commitDimension = (axis: "width" | "height", value: number | null) => {
     if (value === null || !isValidDimension(value)) return;
     const next = { ...presentedSize, [axis]: value };
@@ -771,14 +762,14 @@ function BrowserSearchEngineSetting() {
   );
 }
 
-function PullRequestLinksOpenInAppSetting() {
+export function PullRequestLinksOpenInAppSetting() {
   const openInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
   const updateSettings = useUpdatePrimarySettings();
 
   return (
     <SettingsRow
       {...searchableSetting("pull-request-links-open-in-app")}
-      description="Clicking a pull request link opens it in T3 Code. Turn off to open pull request links like any other link, on GitHub or your git host."
+      description="Clicking a pull request link opens it in T3 Code. Turn off to open pull request links like any other link, on your git host."
       resetAction={
         openInApp ? null : (
           <SettingResetButton
@@ -818,7 +809,7 @@ function DeviceIntegrationSettings() {
   );
 }
 
-export function DeviceIntegrationControls({
+function DeviceIntegrationControls({
   environmentId,
   enabled,
   agentAccessEnabled,
@@ -991,12 +982,23 @@ export function DeviceIntegrationControls({
                 : undefined
             }
             status={
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
-                <PlatformStatus compact platform="iOS" status={platformSetupStatus(state, "ios")} />
-                <PlatformStatus
-                  compact
-                  platform="Android"
-                  status={platformSetupStatus(state, "android")}
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-x-5 gap-y-2">
+                  <PlatformStatus
+                    compact
+                    platform="iOS"
+                    status={platformSetupStatus(state, "ios")}
+                  />
+                  <PlatformStatus
+                    compact
+                    platform="Android"
+                    status={platformSetupStatus(state, "android")}
+                  />
+                </div>
+                {/* Remote hosts report their own warnings in the device host list below. */}
+                <DeviceHostDiagnostics
+                  hosts={state.hosts.filter((host) => host.kind === "local")}
+                  hostStatuses={state.hostStatuses}
                 />
               </div>
             }
@@ -1056,6 +1058,7 @@ export function DeviceIntegrationControls({
         />
       ) : null}
       <DeviceHostsSettings environmentId={environmentId} />
+      {state.supportsEasHosts ? <EasDeviceHostsSettings environmentId={environmentId} /> : null}
     </>
   );
 }
@@ -1185,8 +1188,7 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   const createProfile = (baseName: string) => {
     if (!settingsHydrated || importInFlightRef.current) return undefined;
     const currentProfiles = getClientSettings().browserProfiles;
-    // Checked against the live settings, not the rendered list: two clicks
-    // before a re-render would otherwise both pass the disabled control.
+    // Check live settings; repeated clicks before render can bypass the disabled control.
     if (currentProfiles.length >= BROWSER_PROFILE_MAX_COUNT) return undefined;
     const resolvedProfiles = resolveBrowserProfiles(currentProfiles);
     const taken = new Set(resolvedProfiles.map((profile) => profile.name));
@@ -1597,36 +1599,50 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   );
 }
 
-export function IntegrationsSettingsPanel() {
-  const previewDefaultsDisabled = !isElectron;
-  const previewDefaults = (
-    <>
-      <BrowserProfilesSetting disabled={previewDefaultsDisabled} />
-      <BrowserViewportSetting disabled={previewDefaultsDisabled} />
-      <BrowserZoomSetting disabled={previewDefaultsDisabled} />
-      <BrowserAppearanceSetting disabled={previewDefaultsDisabled} />
-      <BrowserRecordingFrameRateSetting disabled={previewDefaultsDisabled} />
-      <BrowserRecordingInputSettings disabled={previewDefaultsDisabled} />
-      <BrowserLinkTargetSetting disabled={previewDefaultsDisabled} />
-      <BrowserAutoShowFloatingPreviewSetting disabled={previewDefaultsDisabled} />
-    </>
-  );
+export function BrowserSettingsPanel() {
+  const desktopOnly = !isElectron;
+  const desktopOnlyMessage = desktopOnly ? "Only available in the desktop app." : undefined;
 
   return (
     <SettingsPageContainer>
-      <SettingsSection id="browser" title="Browser">
+      <SettingsSection id="browser-agent-access" title="Agent access">
         <AgentBrowserAccessSetting />
-        {previewDefaultsDisabled ? (
-          <SettingsUnavailableGroup message="Only available in the desktop app.">
-            {previewDefaults}
-          </SettingsUnavailableGroup>
-        ) : (
-          previewDefaults
-        )}
+      </SettingsSection>
+      <SettingsSection id="browser" title="Browsing">
+        <SettingsUnavailableGroup message={desktopOnlyMessage}>
+          <BrowserProfilesSetting disabled={desktopOnly} />
+          <BrowserLinkTargetSetting disabled={desktopOnly} />
+          <BrowserAutoShowFloatingPreviewSetting disabled={desktopOnly} />
+        </SettingsUnavailableGroup>
         {/* Not desktop-only: web clients search from server-run browser tabs too. */}
         <BrowserSearchEngineSetting />
-        <PullRequestLinksOpenInAppSetting />
+        <AdvancedSettings
+          targetIds={[
+            searchableSetting("browser-default-viewport").id,
+            searchableSetting("browser-default-zoom").id,
+            searchableSetting("browser-default-appearance").id,
+          ]}
+        >
+          <SettingsUnavailableGroup message={desktopOnlyMessage}>
+            <BrowserViewportSetting disabled={desktopOnly} />
+            <BrowserZoomSetting disabled={desktopOnly} />
+            <BrowserAppearanceSetting disabled={desktopOnly} />
+          </SettingsUnavailableGroup>
+        </AdvancedSettings>
       </SettingsSection>
+      <SettingsSection id="browser-recordings" title="Recordings">
+        <SettingsUnavailableGroup message={desktopOnlyMessage}>
+          <BrowserRecordingFrameRateSetting disabled={desktopOnly} />
+          <BrowserRecordingInputSettings disabled={desktopOnly} />
+        </SettingsUnavailableGroup>
+      </SettingsSection>
+    </SettingsPageContainer>
+  );
+}
+
+export function DevicesSettingsPanel() {
+  return (
+    <SettingsPageContainer>
       <DeviceIntegrationSettings />
     </SettingsPageContainer>
   );

@@ -47,7 +47,7 @@ export function relayProtectedErrorMessage(error: RelayProtectedError): string {
         return "The environment's T3 Connect tunnel is still being set up.";
       }
       if (error.reason === "endpoint_provider_not_managed") {
-        return "This environment is linked only to publish agent activity, so it cannot accept connections. On that computer, open Settings > Connections and turn T3 Connect on.";
+        return "This environment is linked only to publish agent activity, so it cannot accept connections. On that computer, open Settings > Sharing & access and turn T3 Connect on.";
       }
       return error.reason
         ? `Relay rejected the environment connection request (${error.reason}).`
@@ -59,7 +59,9 @@ export function relayProtectedErrorMessage(error: RelayProtectedError): string {
     case "RelayEnvironmentLinkFailedError":
       return `Relay could not link the environment (${error.reason}).`;
     case "RelayEnvironmentLinkUnavailableError":
-      return `Relay cannot provision the managed endpoint (${error.reason}).`;
+      return `Relay cannot provision the managed endpoint (${error.reason}).${
+        error.provisioningStage ? ` Failed stage: ${error.provisioningStage}.` : ""
+      }`;
     case "RelayEnvironmentLinkLimitExceededError":
       return `Relay refused the link: this account already has its maximum of ${error.maxTunnels} managed tunnels. Unlink an environment to free one up.`;
     case "RelayAgentActivityPublishProofExpiredError":
@@ -86,7 +88,7 @@ export function relayRequestFailureDetail(error: {
   return null;
 }
 
-export const RELAY_TUNNEL_RELEASED_MESSAGE =
+const RELAY_TUNNEL_RELEASED_MESSAGE =
   "Offline for a while, so its T3 Connect tunnel was removed. Start T3 Code on that computer and update it to the latest version to reconnect.";
 
 export function relayOfflineReasonMessage(

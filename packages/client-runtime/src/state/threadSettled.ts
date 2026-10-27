@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off -- UI snooze presets use local calendar boundaries and Intl labels.
 import * as DateTime from "effect/DateTime";
 
-import type { PendingSubagentRequest } from "./models.ts";
+import type { EnvironmentThreadShell, PendingSubagentRequest } from "./models.ts";
 
 interface SettlementRunLike {
   readonly turnId?: unknown;
@@ -32,11 +32,8 @@ interface QueuedThreadShell {
 }
 
 /**
- * A queued turn start lives for at most this long: session adoption takes
- * seconds, so a user message still unadopted after the grace window is a
- * failed start (or stale data — shells from older servers can carry user
- * messages with no latestTurn at all), not pending work. Without this bound
- * such threads would be permanently unsettleable.
+ * Failed starts and stale shells from older servers can leave user messages unadopted.
+ * Bound the pending window so those threads can eventually settle.
  */
 export const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -71,34 +68,31 @@ export function hasQueuedTurnStart(
 }
 
 export interface ThreadSnoozeShell extends QueuedThreadShell {
+  readonly source?: Pick<EnvironmentThreadShell["source"], "pendingRuntimeRequest">;
   readonly snoozedUntil?: string | null;
   readonly snoozedAt?: string | null;
   readonly hasPendingApprovals: boolean;
   readonly hasPendingUserInput: boolean;
   readonly pendingSubagentRequest?: PendingSubagentRequest | null;
+  readonly pendingGuestMessageCount?: number;
 }
 
+/**
+ * Only a request for the user or a fresh failure ends a snooze early. Completed runs never do:
+ * a snoozed long-running thread keeps waking itself for background work and stays hidden
+ * until its timer.
+ */
 export function threadRaisedHandWhileSnoozed(shell: ThreadSnoozeShell): boolean {
   if (shell.hasPendingApprovals || shell.hasPendingUserInput) return true;
+  if (shell.source?.pendingRuntimeRequest != null) return true;
   if (shell.pendingSubagentRequest != null) return true;
-  const latestRun = shell.latestRun ?? shell.latestTurn ?? null;
+  if ((shell.pendingGuestMessageCount ?? 0) > 0) return true;
   const failedAt = failureEdgeAt(shell);
-  if (
+  return (
     failedAt !== undefined &&
     (shell.snoozedAt == null ||
       (failedAt != null && Date.parse(failedAt) > Date.parse(shell.snoozedAt)))
-  ) {
-    return true;
-  }
-  if (
-    shell.snoozedAt != null &&
-    (latestRun?.state === "completed" || latestRun?.status === "completed") &&
-    latestRun.completedAt != null &&
-    Date.parse(latestRun.completedAt) > Date.parse(shell.snoozedAt)
-  ) {
-    return true;
-  }
-  return false;
+  );
 }
 
 // V2 runtime.updatedAt includes metadata writes; prefer the failed run's completion.
@@ -119,16 +113,22 @@ export function canSnooze(
     | "hasPendingApprovals"
     | "hasPendingUserInput"
     | "pendingSubagentRequest"
+    | "pendingGuestMessageCount"
     | "latestUserMessageAt"
     | "latestTurn"
     | "latestRun"
     | "session"
     | "runtime"
+    | "source"
   >,
   options: { readonly now: string },
 ): boolean {
   if (shell.hasPendingApprovals || shell.hasPendingUserInput) return false;
+  // The server rejects snoozing even for nonblocking questions.
+  if (shell.source?.pendingRuntimeRequest != null) return false;
   if (shell.pendingSubagentRequest != null) return false;
+  // A waiting guest message would wake it at once.
+  if ((shell.pendingGuestMessageCount ?? 0) > 0) return false;
   if (hasQueuedTurnStart(shell, options)) return false;
   return true;
 }
@@ -156,15 +156,6 @@ export function threadWokeAt(
   // indicator the user already cleared by visiting (snoozedUntil is newer
   // than that visit's lastVisitedAt).
   if (threadRaisedHandWhileSnoozed(shell)) {
-    const latestRun = shell.latestRun ?? shell.latestTurn ?? null;
-    if (
-      shell.snoozedAt != null &&
-      (latestRun?.state === "completed" || latestRun?.status === "completed") &&
-      latestRun.completedAt != null &&
-      Date.parse(latestRun.completedAt) > Date.parse(shell.snoozedAt)
-    ) {
-      return latestRun.completedAt;
-    }
     // An old failure must not replace the activity time of an approval or input wake.
     const failedAt = failureEdgeAt(shell);
     if (
@@ -304,4 +295,23 @@ export function localSnoozeDate(date: Date): string {
 
 export function localSnoozeTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * Whether a woken thread woke after the user last saw it. A run that completed
+ * after the last visit counts as seeing it, since the user watched it finish.
+ */
+export function isThreadWokeUnseen(input: {
+  readonly wokeAt: string | null;
+  readonly settled: boolean;
+  readonly lastVisitedAt: string | null | undefined;
+  readonly latestRunCompletedAt: string | null;
+}): boolean {
+  if (input.wokeAt === null || input.settled) return false;
+  const wokeAtMs = Date.parse(input.wokeAt);
+  if (Number.isNaN(wokeAtMs)) return false;
+  const seenAt = [input.lastVisitedAt, input.latestRunCompletedAt]
+    .map((value) => (value ? Date.parse(value) : NaN))
+    .filter((ms) => !Number.isNaN(ms));
+  return seenAt.every((ms) => ms < wokeAtMs);
 }

@@ -1,4 +1,7 @@
-import { DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER } from "@t3tools/contracts";
+import {
+  DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER,
+  PreviewCaptureFailure,
+} from "@t3tools/contracts";
 import type { DesktopPreviewRecordingArtifact, ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
@@ -11,6 +14,8 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { createRecordingCompositor } from "./recordingCompositor";
 
 import { acquireBrowserSurfaceActivity } from "./browserSurfaceStore";
+
+const isPreviewCaptureFailure = Schema.is(PreviewCaptureFailure);
 
 export class BrowserRecordingUnavailableError extends Schema.TaggedError<BrowserRecordingUnavailableError>()(
   "BrowserRecordingUnavailableError",
@@ -86,6 +91,22 @@ export class BrowserRecordingOperationError extends Schema.TaggedError<BrowserRe
   },
 ) {
   override get message(): string {
+    if (isPreviewCaptureFailure(this.cause)) {
+      return this.cause.message;
+    }
+    // Stream acquisition stores its primary failure on the aggregate when cleanup also fails.
+    const captureCause = this.cause instanceof AggregateError ? this.cause.cause : this.cause;
+    if (
+      this.operation === "capture-media-stream" &&
+      captureCause instanceof DOMException &&
+      captureCause.name === "NotReadableError"
+    ) {
+      return (
+        "Unable to start the preview video source. Make sure the capture host is unlocked " +
+        "and its display is on, then retry. " +
+        `${captureCause.name}: ${captureCause.message}`
+      );
+    }
     return `Browser recording operation ${this.operation} failed for tab ${this.tabId}.`;
   }
 }
@@ -263,8 +284,7 @@ const createMediaRecorder = (stream: MediaStream): MediaRecorder => {
 };
 
 const captureTabMediaStream = (frameRate: number): Promise<MediaStream> =>
-  // The desktop main process routes this request to the tab that `startScreencast` armed, so the
-  // stream already arrives at that tab's native size and needs no source or dimension constraints.
+  // The armed tab supplies native-size frames without source or dimension constraints.
   navigator.mediaDevices.getDisplayMedia({
     audio: false,
     video: { frameRate: { ideal: frameRate, max: frameRate } },
@@ -308,8 +328,7 @@ const prepareTabMediaCapture = (tabId: string, frameRate: number) => {
   const pending: PendingTabMediaCapture = {
     start: () => {
       try {
-        // Electron invokes this callback through executeJavaScript(..., true), so even automated
-        // and delayed queued starts satisfy getDisplayMedia's transient-activation requirement.
+        // executeJavaScript(..., true) supplies transient activation for automated or delayed capture.
         resolveCapture(captureTabMediaStream(frameRate));
       } catch (cause) {
         rejectCapture(cause);
@@ -553,8 +572,7 @@ export async function startBrowserRecording(
       }
       throw recordingStartupCancelledError(recording);
     };
-    // The desktop process exposes one display-media grant at a time. Keep only the
-    // arm-to-capture handoff exclusive; acquired streams can record concurrently.
+    // Electron grants one display-media request at a time; serialize handoff, not recording.
     const grant = queueDisplayMediaGrant(async () => {
       if (startingLifecycle.cancelledBeforeGrant) {
         throw new BrowserRecordingStartCancelledError({ tabId });
@@ -737,10 +755,7 @@ const finalizeBrowserRecording = async (
   }
 
   if (result._tag === "Failure" && isStartupWaitTimeout(result.error)) {
-    // Do not clear `active` yet. The renderer-side start promise can still
-    // resolve later, and its cancellation path will call `stopScreencast`.
-    // Keeping the slot reserved prevents a newer recording for this tab from
-    // being started and then accidentally stopped by the older late cleanup.
+    // Reserve the slot until late-start cancellation finishes, or it could stop a newer recording.
     throw result.error;
   }
 

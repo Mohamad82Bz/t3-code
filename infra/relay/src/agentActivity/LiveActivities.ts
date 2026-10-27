@@ -13,7 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Function from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import * as RelayDb from "../db.ts";
 import { relayLiveActivities, relayMobileDevices } from "../persistence/schema.ts";
@@ -40,6 +40,18 @@ export class LiveActivityTargetListPersistenceError extends Schema.TaggedError<L
 ) {
   override get message(): string {
     return `Failed to list Live Activity delivery targets for user ${this.userId}.`;
+  }
+}
+
+export class LiveActivityIdleTargetListPersistenceError extends Schema.TaggedError<LiveActivityIdleTargetListPersistenceError>()(
+  "LiveActivityIdleTargetListPersistenceError",
+  {
+    deliveredBefore: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to list idle Live Activities delivered before ${this.deliveredBefore}.`;
   }
 }
 
@@ -97,6 +109,12 @@ export class LiveActivities extends Context.Service<
     readonly listTargets: (input: {
       readonly userId: string;
     }) => Effect.Effect<ReadonlyArray<TargetRow>, LiveActivityTargetListPersistenceError>;
+    readonly listIdleArmedTargets: (input: {
+      readonly deliveredBefore: string;
+    }) => Effect.Effect<
+      ReadonlyArray<{ readonly user_id: string; readonly device_id: string }>,
+      LiveActivityIdleTargetListPersistenceError
+    >;
     readonly markDelivery: (input: {
       readonly userId: string;
       readonly deviceId: string;
@@ -152,10 +170,7 @@ export const make = Effect.gen(function* () {
               eq(relayLiveActivities.deviceId, registration.deviceId),
             ),
           );
-        // The app re-registers its current card's token on every foreground.
-        // Restamping the arming time would make that card look freshly armed,
-        // and the arming grace in ApnsDeliveries would swallow the end that
-        // the registration replay owes a card whose work is gone.
+        // Foreground token refresh must retain the original arming time or grace can swallow an owed end event.
         const armedAt =
           (current?.activityPushToken === registration.activityPushToken
             ? current.remoteStartedAt
@@ -270,6 +285,32 @@ export const make = Effect.gen(function* () {
         );
     }),
 
+    listIdleArmedTargets: Effect.fn("relay.live_activities.list_idle_armed_targets")(
+      function* (input) {
+        return yield* db
+          .select({
+            user_id: relayLiveActivities.userId,
+            device_id: relayLiveActivities.deviceId,
+          })
+          .from(relayLiveActivities)
+          .where(
+            and(
+              isNotNull(relayLiveActivities.activityPushToken),
+              sql`coalesce(${relayLiveActivities.lastLiveActivityDeliveryAt}, ${relayLiveActivities.remoteStartedAt}, ${relayLiveActivities.updatedAt}) < ${input.deliveredBefore}`,
+            ),
+          )
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new LiveActivityIdleTargetListPersistenceError({
+                  deliveredBefore: input.deliveredBefore,
+                  cause,
+                }),
+            ),
+          );
+      },
+    ),
+
     markDelivery: Effect.fn("relay.live_activities.mark_delivery")(function* (input) {
       yield* Effect.annotateCurrentSpan({
         "relay.mobile.device_id": input.deviceId,
@@ -300,10 +341,7 @@ export const make = Effect.gen(function* () {
           .onConflictDoUpdate({
             target: [relayLiveActivities.userId, relayLiveActivities.deviceId],
             set: {
-              // A delivered start begins a NEW activity generation: the stored
-              // update token belongs to the previous activity (dead once a new
-              // one starts, and certainly dead after an end), so keep it only
-              // for plain updates.
+              // Starts create new activity generations; only plain updates can reuse the previous update token.
               activityPushToken:
                 input.kind === "live_activity_update"
                   ? sql`${relayLiveActivities.activityPushToken}`

@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
-import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
+import { SectionHeaderStatus } from "../ui/collapsible-section-header";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -12,6 +12,7 @@ import {
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
+import { deriveProviderSubagentStatus } from "@t3tools/client-runtime/state/thread-execution";
 import {
   deriveThreadRelationshipGraph,
   immediateThreadRelationships,
@@ -27,6 +28,8 @@ import {
   resolveLatestMergeBackRun,
 } from "@t3tools/client-runtime/state/thread-workflows";
 import {
+  isOrchestrationV2WorkActive,
+  isProviderNativeSubagentThread,
   NodeId,
   type EnvironmentId,
   type OrchestrationV2Subagent,
@@ -40,6 +43,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
   BotIcon,
+  ChevronDownIcon,
   CornerLeftUpIcon,
   GitForkIcon,
   LoaderCircleIcon,
@@ -68,7 +72,11 @@ import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
+import { cn } from "~/lib/utils";
 import {
+  THREAD_DETAILS_PANEL_CHEVRON_CLASS,
+  THREAD_DETAILS_PANEL_ICON_CLASS,
+  THREAD_DETAILS_PANEL_LABEL_CLASS,
   THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS,
   THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS,
   THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS,
@@ -77,7 +85,7 @@ import {
 const THREAD_LINEAGE_INITIAL_COUNT = 6;
 const THREAD_LINEAGE_PAGE_COUNT = 12;
 
-export function resolveThreadLineageWindow<Row>(
+function resolveThreadLineageWindow<Row>(
   rows: ReadonlyArray<Row>,
   visibleCount: number,
 ): { readonly visibleRows: ReadonlyArray<Row>; readonly hiddenCount: number } {
@@ -92,11 +100,7 @@ function ThreadLineageRowList(props: {
 }) {
   return (
     <>
-      {/*
-        Plain overflow, not a ScrollArea
-        component: this sits inside an already scrolling panel, where a
-        max-height-only virtual viewport measures badly.
-      */}
+      {/* ScrollArea's max-height viewport measures badly inside this scrolling panel. */}
       <ul
         aria-label="Related threads"
         className="m-0 max-h-[13.5rem] list-none overflow-y-auto overscroll-contain p-0 has-data-workflow-expanded:max-h-[min(28rem,55dvh)]"
@@ -133,17 +137,26 @@ function ThreadLineageGroup(props: {
   return (
     <div>
       {props.label ? (
-        <CollapsibleSectionHeader
-          variant="panel"
-          expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-          accessory={
-            failedCount > 0 ? <SectionHeaderStatus>{failedCount} failed</SectionHeaderStatus> : null
-          }
-        >
-          {props.label}
-          {!expanded && ` (${props.rows.length})`}
-        </CollapsibleSectionHeader>
+        <ThreadDetailsControl aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          <BotIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+          <span className={cn(THREAD_DETAILS_PANEL_LABEL_CLASS, "min-w-0 flex-1 truncate")}>
+            {props.label}
+          </span>
+          {failedCount > 0 ? <SectionHeaderStatus>{failedCount} failed</SectionHeaderStatus> : null}
+          {expanded ? null : (
+            <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
+              {props.rows.length}
+            </span>
+          )}
+          <ChevronDownIcon
+            aria-hidden
+            className={cn(
+              THREAD_DETAILS_PANEL_CHEVRON_CLASS,
+              "transition-transform",
+              !expanded && "rotate-180 redesign:-rotate-90",
+            )}
+          />
+        </ThreadDetailsControl>
       ) : null}
       {expanded ? (
         <ThreadLineageRowList
@@ -177,9 +190,9 @@ function currentSubagent<Agent extends RuntimeSubagent>(
   agent: Agent | undefined,
   childThread: OrchestrationV2ThreadShell | null | undefined,
 ): Agent | undefined {
+  if (!agent || !childThread || isOrchestrationV2WorkActive(agent.status)) return agent;
   const liveStatus =
-    childThread?.activityRunStatus ?? (childThread?.status === "queued" ? "queued" : null);
-  if (!agent || !childThread) return agent;
+    childThread.activityRunStatus ?? (childThread.status === "queued" ? "queued" : null);
   const newerRun =
     childThread.latestRunRequestedAt &&
     DateTime.toEpochMillis(childThread.latestRunRequestedAt) >
@@ -214,6 +227,26 @@ export function ThreadRelationshipsPanel(props: {
   const relationshipShells = useThreadRelationshipShells(ref);
   const allProjects = useProjects();
   const archived = useArchivedThreadSnapshots([props.environmentId]);
+  const archivedShells = archived.snapshots.find(
+    (entry) => entry.environmentId === props.environmentId,
+  )?.snapshot.threads;
+  const currentThread =
+    projection?.thread ??
+    relationshipShells.find((thread) => thread.id === props.threadId) ??
+    archivedShells?.find((thread) => thread.id === props.threadId);
+  const parentThreadId =
+    currentThread?.forkedFrom?.type === "run"
+      ? currentThread.forkedFrom.threadId
+      : currentThread?.lineage.parentThreadId;
+  const parentShell = parentThreadId
+    ? (relationshipShells.find((thread) => thread.id === parentThreadId) ??
+      archivedShells?.find((thread) => thread.id === parentThreadId))
+    : undefined;
+  const parentRef =
+    parentShell && isProviderNativeSubagentThread(parentShell)
+      ? scopeThreadRef(props.environmentId, parentShell.id)
+      : null;
+  const parentProjection = useThreadProjection(parentRef)?.projection;
   const navigate = useNavigate();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
   const stopSession = useAtomCommand(threadEnvironment.stopSession);
@@ -224,13 +257,12 @@ export function ThreadRelationshipsPanel(props: {
   );
   const [busyAction, setBusyAction] = useState<"merge" | "detach" | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
-  // These lookups and the graph walk every subagent and thread, so they sit below
-  // the panel's hooks where the compiler can cache them.
+  // Derive graphs after hooks to preserve their compiler cache.
   const providers = providersByEnvironment.get(props.environmentId);
   const projects = allProjects.filter((project) => project.environmentId === props.environmentId);
-  const archivedShells = archived.snapshots.find(
-    (entry) => entry.environmentId === props.environmentId,
-  )?.snapshot.threads;
+  const parentNativeStatus = parentProjection
+    ? deriveProviderSubagentStatus(parentProjection)?.status
+    : undefined;
   const projected = projection?.subagents ?? [];
   const runtimeSubagents = projectedSubagentsToRuntime(projected);
   const byId = new Map(runtimeSubagents.map((agent) => [agent.id, agent]));
@@ -261,7 +293,6 @@ export function ThreadRelationshipsPanel(props: {
     ...(archivedShells ?? []),
   ];
   const graph = deriveThreadRelationshipGraph({ threads: shells, projection });
-  const currentThread = projection?.thread ?? graph.nodes.get(props.threadId)?.thread;
   const currentProject = projects.find((project) => project.id === currentThread?.projectId);
   const latestMergeBackRun = projection === null ? null : resolveLatestMergeBackRun(projection);
   const mergeTargetThreadId = resolveMergeBackTargetThreadId(projection);
@@ -344,16 +375,13 @@ export function ThreadRelationshipsPanel(props: {
 
   const stopSubagent = async (
     childThreadId: ThreadId,
-    agent: Pick<OrchestrationV2Subagent, "id" | "origin" | "threadId">,
+    agent: Pick<OrchestrationV2Subagent, "id" | "threadId">,
   ) => {
     if (stoppingId !== null) return;
     setStoppingId(childThreadId);
     const result = await interruptTurn({
       environmentId: props.environmentId,
-      input:
-        agent.origin === "provider_native"
-          ? { threadId: agent.threadId, subagentId: agent.id }
-          : { threadId: childThreadId },
+      input: { threadId: agent.threadId, subagentId: agent.id },
     });
     setStoppingId(null);
     if (result._tag === "Failure") {
@@ -383,6 +411,8 @@ export function ThreadRelationshipsPanel(props: {
     <ThreadDetailsSection
       headingId="thread-details-lineage-heading"
       title={runningCount > 0 ? `Lineage · ${runningCount} running` : "Lineage"}
+      // A lone "Previous agents" row names itself; the heading returns for status or actions.
+      showHeading={runningCount > 0 || canDetach || related.length > 0 || active.length > 0}
       data-thread-relationships-panel
       actions={
         canDetach ? (
@@ -418,7 +448,10 @@ export function ThreadRelationshipsPanel(props: {
               const isSubagent = edge.kind === "subagent";
               const isMergeTarget = threadId === mergeTargetThreadId;
               const isParent = isParentThreadRelationship(edge, props.threadId);
-              const rowStatus = threadRelationshipRowStatus(graph, { threadId, edge });
+              const rowStatus =
+                (isParent && threadId === parentRef?.threadId
+                  ? (node?.thread?.activityRunStatus ?? parentNativeStatus)
+                  : undefined) ?? threadRelationshipRowStatus(graph, { threadId, edge });
               const RelationshipIcon = isParent
                 ? CornerLeftUpIcon
                 : isSubagent

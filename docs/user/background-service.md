@@ -37,8 +37,42 @@ installing one.
 
 `t3 uninstall` removes the background service, the `t3` launcher, and the
 downloaded versions after showing you the list and asking once. Your projects,
-threads, and settings under `~/.t3/userdata` are kept. Pass `--yes` from a
-script.
+threads, and settings under `~/.t3/userdata` are kept, along with `service.env`
+under T3 home. Pass `--yes` from a script.
+
+## Local network access
+
+The service listens on your local network and Tailscale addresses, so the
+desktop and mobile apps on the same network connect directly instead of through
+T3 Connect. The hosted web app at app.t3.codes stays on T3 Connect, because
+browsers block plain HTTP from an HTTPS page. The service does not answer on
+public addresses, and every device still needs to pair or sign in. To keep the service reachable from this machine only, set
+`T3CODE_HOST=127.0.0.1` in `service.env` (below). Any `T3CODE_HOST` value
+replaces this default.
+
+## Configure the service environment
+
+Put custom environment variables in `service.env` under the service's T3 home
+directory, normally `~/.t3/service.env`. This file survives service installation
+and updates. For example:
+
+```dotenv
+T3CODE_PORT=3773
+T3CODE_HOST=127.0.0.1
+```
+
+Use `KEY=VALUE` entries, quoting values that contain spaces or `#`. Values are
+literal: shell commands and variable expansion are not evaluated. Entries
+override the inherited service environment, except for `PATH`, `T3CODE_HOME`,
+`T3_BOOT_SERVICE_UNIT`, and `T3_SERVICE_LAUNCHER_CONTEXT` (including case variants).
+
+Run `t3 service restart` after changing the file. Changes apply when the service
+starts again; switching the server version alone keeps the current values.
+For a service installed before env-file support, run `t3 service install` once
+with an up-to-date CLI.
+A missing file is ignored; other read failures stop service startup.
+If the file contains credentials, restrict access to that file with `chmod 600`
+(for the default T3 home, `chmod 600 ~/.t3/service.env`).
 
 ## Platform support
 
@@ -94,14 +128,14 @@ Downloads, it may need Full Disk Access for the `t3` executable listed in
 `~/Library/LaunchAgents/com.t3tools.t3code.service.plist`.
 
 For failures after signing in to T3 Connect, see
-[connection troubleshooting](./remote-access.md#t3-connect-troubleshooting).
+[connection troubleshooting](./t3-connect-troubleshooting.md).
 
 ## Reclaim database space
 
 T3 Code removes superseded internal history on its own while it runs; your
 conversations are kept. Databases created before this shrank automatically
 still hold the freed space on disk until a one-time offline repair returns it
-and turns on automatic shrinking. Settings > Storage (web and desktop) or
+and turns on automatic shrinking. Settings > Maintenance (web and desktop) or
 Settings > Maintenance (mobile) suggests the repair when at least 1 GiB can be
 reclaimed.
 

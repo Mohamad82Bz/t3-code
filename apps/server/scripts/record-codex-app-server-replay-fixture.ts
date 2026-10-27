@@ -68,8 +68,7 @@ import { makeReplayRecorderDeferredRegistry } from "./replayRecorderDeferredRegi
 const CODEX_REPLAY_PLAN_MODE_DEVELOPER_INSTRUCTIONS =
   process.env.T3_CODEX_REPLAY_PLAN_DEVELOPER_INSTRUCTIONS ??
   "You are in Plan mode. Prefer request_user_input for clarifying questions. When presenting a complete plan, wrap it in <proposed_plan> and </proposed_plan>.";
-// Match the V2 adapter's initialize, thread and turn frames so recordings replay
-// against it without hand edits.
+// Match V2 adapter frames so recordings replay unchanged.
 const CODEX_CLIENT_CAPABILITIES = {
   experimentalApi: true,
   optOutNotificationMethods: ["turn/diff/updated"],
@@ -125,10 +124,7 @@ interface ReplayRun {
   readonly steps: ReadonlyArray<ReplayStep>;
   readonly turnDefaults?: Omit<TurnStartParams, "input" | "threadId">;
   readonly interactionMode?: "plan";
-  /**
-   * Recorder-only `thread/start` config merged over the adapter's. Its keys go in the
-   * transcript header as `recorderThreadConfigKeys`, which replay leaves out of matching.
-   */
+  /** Recorder overrides; replay ignores keys listed in the header's `recorderThreadConfigKeys`. */
   readonly threadConfig?: Readonly<Record<string, boolean | number | string>>;
 }
 
@@ -415,8 +411,7 @@ function scenarios(): ReadonlyArray<ReplayScenario> {
       fileName: "tool_call_restricted_granular.ndjson",
       description:
         "Write a small fixture file with restricted read access and granular approval flags enabled.",
-      // gpt-6 models write through the shell; gpt-5.6-terra uses apply_patch, which is what
-      // raises the file-change approval this scenario covers.
+      // gpt-5.6-terra uses apply_patch, which raises this approval; gpt-6 uses the shell.
       model: "gpt-5.6-terra",
       runs: [
         {
@@ -945,8 +940,7 @@ function scenarios(): ReadonlyArray<ReplayScenario> {
       fileName: "thread_fork_native_siblings.ndjson",
       description:
         "One source marker turn and two independent native forks that each recall the source plus only their own fork marker.",
-      // gpt-6-luna often answers the recall turn with an earlier acknowledgement instead of
-      // the markers; gpt-6-sol recalls them.
+      // gpt-6-luna often recalls acknowledgements; gpt-6-sol recalls the markers.
       model: "gpt-6-sol",
       runs: [
         {
@@ -993,8 +987,7 @@ function scenarios(): ReadonlyArray<ReplayScenario> {
       fileName: "thread_merge_back_continue.ndjson",
       description:
         "A source thread consumes one fork-delta handoff and later recalls source and transferred context.",
-      // gpt-6-luna often answers the recall turn with an earlier acknowledgement instead of
-      // the markers; gpt-6-sol recalls them.
+      // gpt-6-luna often recalls acknowledgements; gpt-6-sol recalls the markers.
       model: "gpt-6-sol",
       runs: [
         {
@@ -1041,8 +1034,7 @@ function scenarios(): ReadonlyArray<ReplayScenario> {
       fileName: "thread_merge_back_siblings.ndjson",
       description:
         "Two sibling fork deltas are merged sequentially into one source provider thread and recalled together.",
-      // gpt-6-luna often answers the recall turn with an earlier acknowledgement instead of
-      // the markers; gpt-6-sol recalls them.
+      // gpt-6-luna often recalls acknowledgements; gpt-6-sol recalls the markers.
       model: "gpt-6-sol",
       runs: [
         {
@@ -1110,7 +1102,7 @@ function recorderThreadConfigMetadata(scenario: ReplayScenario) {
   return keys.length === 0 ? {} : { recorderThreadConfigKeys: keys };
 }
 
-function makeRecorder({
+const makeRecorder = Effect.fn("record-codex-app-server-replay-fixture.makeRecorder")(function* ({
   outPath,
   scenario,
   checkout,
@@ -1118,55 +1110,53 @@ function makeRecorder({
   readonly outPath: string;
   readonly scenario: ReplayScenario;
   readonly checkout: string;
-}): Effect.Effect<Recorder, PlatformError.PlatformError, FileSystem.FileSystem> {
-  return Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    let version = "unknown";
-    const records: Array<Record<string, unknown>> = [];
-    const setVersion = (nextVersion: string) =>
-      Effect.sync(() => {
-        version = nextVersion;
-      });
-    const writeRecord = (record: Record<string, unknown>) =>
-      Effect.sync(() => {
-        records.push(record);
-      });
-    const flush = () => {
-      const outputRecords = codexReplayRecordingOutputRecords(records, {
-        workspace: process.cwd(),
-        machine: {
-          home: NodeOS.homedir(),
-          hostname: NodeOS.hostname(),
-          checkout,
-        },
-      });
-      return fs.writeFileString(
-        outPath,
-        `${[
-          {
-            type: "transcript_start",
-            provider: "codex",
-            protocol: "codex.app-server",
-            version,
-            scenario: scenario.name,
-            metadata: {
-              source: "record-codex-app-server-replay-fixture",
-              fileName: scenario.fileName,
-              description: scenario.description,
-              model: scenarioModel(scenario),
-              ...recorderThreadConfigMetadata(scenario),
-            },
+}): Effect.fn.Return<Recorder, PlatformError.PlatformError, FileSystem.FileSystem> {
+  const fs = yield* FileSystem.FileSystem;
+  let version = "unknown";
+  const records: Array<Record<string, unknown>> = [];
+  const setVersion = (nextVersion: string) =>
+    Effect.sync(() => {
+      version = nextVersion;
+    });
+  const writeRecord = (record: Record<string, unknown>) =>
+    Effect.sync(() => {
+      records.push(record);
+    });
+  const flush = () => {
+    const outputRecords = codexReplayRecordingOutputRecords(records, {
+      workspace: process.cwd(),
+      machine: {
+        home: NodeOS.homedir(),
+        hostname: NodeOS.hostname(),
+        checkout,
+      },
+    });
+    return fs.writeFileString(
+      outPath,
+      `${[
+        {
+          type: "transcript_start",
+          provider: "codex",
+          protocol: "codex.app-server",
+          version,
+          scenario: scenario.name,
+          metadata: {
+            source: "record-codex-app-server-replay-fixture",
+            fileName: scenario.fileName,
+            description: scenario.description,
+            model: scenarioModel(scenario),
+            ...recorderThreadConfigMetadata(scenario),
           },
-          ...outputRecords,
-        ]
-          .map((record) => JSON.stringify(record))
-          .join("\n")}\n`,
-      );
-    };
+        },
+        ...outputRecords,
+      ]
+        .map((record) => JSON.stringify(record))
+        .join("\n")}\n`,
+    );
+  };
 
-    return { path: outPath, setVersion, writeRecord, flush };
-  });
-}
+  return { path: outPath, setVersion, writeRecord, flush };
+});
 
 function layerCodex({ recorder }: { readonly recorder: Recorder }) {
   const clientRequestMethodById = new Map<string, string>();
@@ -1174,7 +1164,7 @@ function layerCodex({ recorder }: { readonly recorder: Recorder }) {
   const clientOptions: CodexClient.CodexAppServerClientOptions = {
     logIncoming: true,
     logOutgoing: true,
-    logger: (event) => {
+    logger: Effect.fn("logger")(function (event) {
       if (event.stage === "raw") {
         return Effect.void;
       }
@@ -1225,14 +1215,13 @@ function layerCodex({ recorder }: { readonly recorder: Recorder }) {
         yield* updateVersion;
         yield* recorder.writeRecord(record);
       }).pipe(Effect.ignore);
-    },
+    }),
   };
 
   return Layer.effect(
     CodexClient.CodexAppServerClient,
     Effect.gen(function* () {
-      // The vp node shim marks its children with VP_TOOL_RECURSION, which makes every
-      // `node` the agent runs through a shell fail. Codex must not inherit it.
+      // Inheriting the vp shim's VP_TOOL_RECURSION makes Codex's shell `node` calls fail.
       const { VP_TOOL_RECURSION: _vpToolRecursion, ...environment } =
         yield* HostProcess.Environment;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -1348,16 +1337,16 @@ function installReplayHandlers({
   );
 }
 
-function runReplaySession({
-  scenario,
-  run,
-  recorder,
-}: {
-  readonly scenario: ReplayScenario;
-  readonly run: ReplayRun;
-  readonly recorder: Recorder;
-}) {
-  return Effect.gen(function* () {
+const runReplaySession = Effect.fn("record-codex-app-server-replay-fixture.runReplaySession")(
+  function* ({
+    scenario,
+    run,
+    recorder,
+  }: {
+    readonly scenario: ReplayScenario;
+    readonly run: ReplayRun;
+    readonly recorder: Recorder;
+  }) {
     const startedTurns = yield* makeReplayRecorderDeferredRegistry();
     const completedTurns = yield* makeReplayRecorderDeferredRegistry();
     const startedCommandExecutions = yield* makeReplayRecorderDeferredRegistry();
@@ -1397,73 +1386,72 @@ function runReplaySession({
       return client;
     });
 
-    const runTurnStep = (
+    const runTurnStep = Effect.fn("record-codex-app-server-replay-fixture.runTurnStep")(function* (
       client: CodexClient.CodexAppServerClient["Service"],
       threadId: string,
       step: TurnReplayStep,
-    ) =>
-      Effect.gen(function* () {
-        const turnParams: TurnStartParams = {
-          approvalPolicy: "never",
-          sandboxPolicy: { type: "dangerFullAccess" },
-          cwd: process.cwd(),
-          model,
-          summary: "detailed",
-          approvalsReviewer: "user",
-          ...(run.interactionMode === "plan"
-            ? { collaborationMode: planCollaborationMode(model) }
-            : {}),
-          ...run.turnDefaults,
-          ...step.turnOverrides,
-          input: turnInput(step.prompt),
+    ) {
+      const turnParams: TurnStartParams = {
+        approvalPolicy: "never",
+        sandboxPolicy: { type: "dangerFullAccess" },
+        cwd: process.cwd(),
+        model,
+        summary: "detailed",
+        approvalsReviewer: "user",
+        ...(run.interactionMode === "plan"
+          ? { collaborationMode: planCollaborationMode(model) }
+          : {}),
+        ...run.turnDefaults,
+        ...step.turnOverrides,
+        input: turnInput(step.prompt),
+        threadId,
+      };
+
+      if (step.type === "steeredTurn") {
+        approvalGate = yield* Deferred.make<void>();
+      }
+
+      const turn = yield* client.request("turn/start", turnParams);
+      const turnId = getTurnId(turn);
+      const started = yield* getStarted(turnId);
+      yield* getCompletion(turnId);
+
+      if (step.type === "steeredTurn") {
+        yield* Deferred.await(started);
+        yield* client.request("turn/steer", {
+          expectedTurnId: turnId,
+          input: turnInput(step.steer),
           threadId,
-        };
-
-        if (step.type === "steeredTurn") {
-          approvalGate = yield* Deferred.make<void>();
+        });
+        if (approvalGate) {
+          yield* Deferred.succeed(approvalGate, void 0);
+          approvalGate = undefined;
         }
+      }
 
-        const turn = yield* client.request("turn/start", turnParams);
-        const turnId = getTurnId(turn);
-        const started = yield* getStarted(turnId);
-        yield* getCompletion(turnId);
-
-        if (step.type === "steeredTurn") {
-          yield* Deferred.await(started);
-          yield* client.request("turn/steer", {
-            expectedTurnId: turnId,
-            input: turnInput(step.steer),
+      if (step.type === "interruptedTurn") {
+        if (step.interruptAfterCommandExecutionStarted === true) {
+          const commandExecutionStarted = yield* getCommandExecutionStarted(turnId);
+          yield* Deferred.await(commandExecutionStarted);
+        } else {
+          yield* Effect.sleep(`${step.interruptAfterMs ?? 1_500} millis`);
+        }
+        yield* client.request("turn/interrupt", {
+          threadId,
+          turnId,
+        });
+        for (const processId of runningCommandProcessIds.get(turnId)?.values() ?? []) {
+          yield* client.raw.request("thread/backgroundTerminals/terminate", {
             threadId,
+            processId,
           });
-          if (approvalGate) {
-            yield* Deferred.succeed(approvalGate, void 0);
-            approvalGate = undefined;
-          }
         }
+      }
 
-        if (step.type === "interruptedTurn") {
-          if (step.interruptAfterCommandExecutionStarted === true) {
-            const commandExecutionStarted = yield* getCommandExecutionStarted(turnId);
-            yield* Deferred.await(commandExecutionStarted);
-          } else {
-            yield* Effect.sleep(`${step.interruptAfterMs ?? 1_500} millis`);
-          }
-          yield* client.request("turn/interrupt", {
-            threadId,
-            turnId,
-          });
-          for (const processId of runningCommandProcessIds.get(turnId)?.values() ?? []) {
-            yield* client.raw.request("thread/backgroundTerminals/terminate", {
-              threadId,
-              processId,
-            });
-          }
-        }
-
-        const completed = yield* getCompletion(turnId);
-        yield* Deferred.await(completed);
-        lastTurnIdByThread.set(threadId, turnId);
-      });
+      const completed = yield* getCompletion(turnId);
+      yield* Deferred.await(completed);
+      lastTurnIdByThread.set(threadId, turnId);
+    });
 
     if (scenario.name === "provider_thread_resume") {
       const firstStep = run.steps[0];
@@ -1550,8 +1538,7 @@ function runReplaySession({
       yield* Effect.gen(function* () {
         const client = yield* initializeClient;
         const resumeParams = { threadId, excludeTurns: true, ...threadRuntimeParams };
-        // Like the adapter: the fresh app-server reports the thread notLoaded,
-        // so it is resumed before thread/revert, and the next turn resumes it again.
+        // Fresh app-servers report notLoaded; resume before thread/revert and again on the next turn.
         yield* client.request("thread/read", { threadId, includeTurns: false });
         yield* client.request("thread/resume", resumeParams);
         yield* revertCodexThread(client, threadId, rollback.numTurns);
@@ -1611,36 +1598,34 @@ function runReplaySession({
         }),
       ),
     );
-  });
-}
+  },
+);
 
-function runScenario({
+const runScenario = Effect.fn("record-codex-app-server-replay-fixture.runScenario")(function* ({
   scenario,
   outPath,
 }: {
   readonly scenario: ReplayScenario;
   readonly outPath: string;
 }) {
-  return Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const checkout = path.resolve(yield* path.fromFileUrl(new URL("../../..", import.meta.url)));
-    const recorder = yield* makeRecorder({ outPath, scenario, checkout });
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const checkout = path.resolve(yield* path.fromFileUrl(new URL("../../..", import.meta.url)));
+  const recorder = yield* makeRecorder({ outPath, scenario, checkout });
 
-    yield* fs.makeDirectory(path.dirname(outPath), { recursive: true });
-    yield* Console.log(`Writing ${scenario.name} Codex replay events to ${recorder.path}`);
+  yield* fs.makeDirectory(path.dirname(outPath), { recursive: true });
+  yield* Console.log(`Writing ${scenario.name} Codex replay events to ${recorder.path}`);
 
-    yield* Effect.forEach(scenario.runs, (run) => runReplaySession({ scenario, run, recorder }), {
-      concurrency: 1,
-    });
-
-    yield* recorder.writeRecord({
-      type: "runtime_exit",
-      status: "success",
-    });
-    yield* recorder.flush();
+  yield* Effect.forEach(scenario.runs, (run) => runReplaySession({ scenario, run, recorder }), {
+    concurrency: 1,
   });
-}
+
+  yield* recorder.writeRecord({
+    type: "runtime_exit",
+    status: "success",
+  });
+  yield* recorder.flush();
+});
 
 const program = Effect.gen(function* () {
   const path = yield* Path.Path;

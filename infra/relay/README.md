@@ -120,7 +120,9 @@ one of those outputs changed, and `T3CODE_RELAY_CLIENT_CONFIG_ENV` redirects it 
 The relay is versioned separately from client releases. `.github/workflows/deploy-relay.yml` deploys
 the shared Alchemy `prod` stage on every push to `main`. Stable and nightly release builds both
 resolve their static public config from the same
-`production` GitHub environment. Pull requests do not deploy relay stages. Developers can
+`production` GitHub environment. Labeling a same-repository PR `relay:preview` deploys a `pr-<number>`
+stage, and the cleanup workflow tears it down; see
+[`relay-preview.yml`](../../.github/workflows/relay-preview.yml). Developers can
 deploy personal non-production stages locally with any stage name other than `prod`.
 
 The repository must define these Actions variables shared by relay deployments:
@@ -141,6 +143,10 @@ The `production` GitHub environment must define these Actions variables:
 - `RELAY_API_ZONE_NAME`
 - `RELAY_TUNNEL_ZONE_NAME`
 - `RELAY_DOMAIN` if overriding the derived production relay domain
+- `RELAY_ALERT_NOTIFIER_ID`, the Axiom notifier that relay alerts page. Without it the deployment
+  creates no monitors or health dashboard. See
+  [Relay alerts](../../docs/operations/relay-observability.md#alerts).
+- `RELAY_WARNING_NOTIFIER_ID`, optional, the Axiom notifier for relay warnings
 - `CLERK_PUBLISHABLE_KEY`
 - `CLERK_JWT_AUDIENCE`
 - `CLERK_JWT_TEMPLATE`

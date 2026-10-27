@@ -15,8 +15,18 @@ import {
   paceRemainingPercent,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
+import type { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
-import { createContext, Fragment, type ReactNode, use, useEffect, useState } from "react";
+import {
+  createContext,
+  Fragment,
+  type ReactNode,
+  type RefObject,
+  use,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { UsageCodexCredentials } from "./UsageCodexCredentials";
 import { ensureLocalApi } from "../../localApi";
@@ -34,6 +44,7 @@ import {
   PaceIcon,
   ResetCreditDialog,
   barColor,
+  usePaceMark,
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
@@ -218,11 +229,13 @@ const SegmentPopoverContext = createContext<ReturnType<
 
 function ActiveSegmentPopover({
   handle,
+  actions,
   payload,
   pools,
   now,
 }: {
   readonly handle: ReturnType<typeof PopoverCreateHandle<SegmentPayload>>;
+  readonly actions: RefObject<PopoverPrimitive.Root.Actions | null>;
   readonly payload: SegmentPayload;
   readonly pools: readonly LimitPool[];
   readonly now: number;
@@ -238,9 +251,14 @@ function ActiveSegmentPopover({
       ),
     ),
   );
-  useEffect(() => {
-    if (!available) handle.close();
-  }, [available, handle]);
+  // The trigger is gone, so the popup has nothing to anchor to: an exit transition would
+  // slide it to the viewport origin. Unmount it outright, which also clears Base UI's
+  // active-trigger bookkeeping so the segment can open again when it comes back.
+  useLayoutEffect(() => {
+    if (available) return;
+    handle.close();
+    actions.current?.unmount();
+  }, [available, handle, actions]);
   return (
     <PopoverPopup side="top" sideOffset={6}>
       <SegmentPopover
@@ -327,6 +345,7 @@ function SegmentTriggers({
   const payload: SegmentPayload = { account, window, reset, redeem };
   const remaining = remainingPercent(window);
   const timeLeft = paceRemainingPercent(window, now);
+  const [segmentRef, paceMark] = usePaceMark(timeLeft);
   const resetsIn = formatResetsIn(window, now);
   const credits = account.limits.resetCredits?.availableCount ?? 0;
   return (
@@ -337,35 +356,39 @@ function SegmentTriggers({
         openOnHover
         render={
           <button
+            ref={segmentRef}
             type="button"
-            style={{ gridColumn: index, gridRow: 1 }}
+            style={{ gridColumn: index, gridRow: 1, ...paceMark?.gappedTrack }}
             aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${timeLeft === null ? "" : `, ${timeLeft}% of the window left`}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
             className="relative h-5 min-w-0 cursor-pointer rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-inset data-[popup-open]:ring-border @2xl/pool:h-8"
           />
         }
       >
         <div aria-hidden className="absolute inset-0 overflow-hidden rounded-md">
-          <div
-            aria-hidden
-            className="absolute inset-y-0 left-0 rounded-md opacity-35"
-            style={{ width: `${remaining}%`, backgroundColor: color }}
-          />
-          {remaining < 100 && reset && refillPercent > 0 ? (
+          {/* Clipped inside the rounded clip so the bar's own corners keep their antialiasing. */}
+          <div className="absolute inset-0" style={paceMark?.gap}>
             <div
               aria-hidden
-              className="absolute inset-y-0 right-0 opacity-20"
-              style={{
-                width: `${Math.min(100 - remaining, refillPercent)}%`,
-                backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 1px, transparent 1px 5px)`,
-              }}
+              className="absolute inset-y-0 left-0 rounded-md opacity-35"
+              style={{ width: `${remaining}%`, backgroundColor: color }}
             />
-          ) : null}
+            {remaining < 100 && reset && refillPercent > 0 ? (
+              <div
+                aria-hidden
+                className="absolute inset-y-0 right-0 opacity-20"
+                style={{
+                  width: `${Math.min(100 - remaining, refillPercent)}%`,
+                  backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 1px, transparent 1px 5px)`,
+                }}
+              />
+            ) : null}
+          </div>
         </div>
-        {timeLeft !== null ? (
+        {paceMark ? (
           <span
             aria-hidden
-            className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-muted-foreground"
-            style={{ left: `${timeLeft}%` }}
+            className="absolute inset-y-0.5 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
+            style={paceMark.tick}
           />
         ) : null}
         <span
@@ -381,7 +404,15 @@ function SegmentTriggers({
               className="min-w-0 truncate font-medium text-foreground"
             />
           ) : null}
-          <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
+          <span
+            className={cn(
+              "shrink-0 font-semibold text-foreground tabular-nums",
+              // A single-account bar repeats the headline percentage.
+              !showAccountName && "redesign:hidden",
+            )}
+          >
+            {remaining}%
+          </span>
           {resetsIn || credits ? (
             <span className="ms-auto flex min-w-0 items-center gap-1.5 overflow-hidden rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs whitespace-nowrap text-foreground tabular-nums">
               {resetsIn?.replace("resets in ", "↻ ") ?? ""}
@@ -584,6 +615,7 @@ export function UsageLimitsPooled({
   readonly cursorPrompt?: ReactNode;
 }) {
   const [segmentPopover] = useState(() => PopoverCreateHandle<SegmentPayload>());
+  const segmentPopoverActions = useRef<PopoverPrimitive.Root.Actions | null>(null);
   const pools = collectLimitPools(
     collectLimitAccounts(presentations, { separateCodexCredentials: true }),
     now,
@@ -616,11 +648,12 @@ export function UsageLimitsPooled({
           </Fragment>
         ))}
       </SegmentPopoverContext>
-      <Popover handle={segmentPopover}>
+      <Popover handle={segmentPopover} actionsRef={segmentPopoverActions}>
         {({ payload }) =>
           payload ? (
             <ActiveSegmentPopover
               handle={segmentPopover}
+              actions={segmentPopoverActions}
               payload={payload}
               pools={pools}
               now={now}

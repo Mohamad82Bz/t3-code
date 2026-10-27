@@ -1,3 +1,4 @@
+import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ConnectionTraceId } from "./ConnectionTraceId";
 import { useAuth } from "@clerk/expo";
@@ -27,6 +28,7 @@ import { environmentPresentations } from "../../state/presentation";
 import { availableCloudEnvironmentPresentation } from "../cloud/cloudEnvironmentPresentation";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
+import { useConnectionDiagnosis } from "./ConnectionDiagnosisDetails";
 import { environmentStatusText } from "./environmentStatusText";
 import { type RelayEnvironmentView, useConnectionController } from "./useConnectionController";
 
@@ -41,9 +43,7 @@ interface CloudEnvironmentRowsProps {
 }
 
 export function CloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
-  // Showcase captures run without a Clerk publishable key, so `ClerkProvider`
-  // is never mounted and any `useAuth` call throws — the fixture states whether
-  // the rows are signed in instead of asking Clerk.
+  // Showcase lacks ClerkProvider; use fixture auth state to avoid a throwing useAuth call.
   if (props.showcaseSignedIn !== undefined) {
     return props.showcaseSignedIn ? <CloudEnvironmentRowsContent {...props} /> : null;
   }
@@ -161,15 +161,13 @@ function CloudEnvironmentRowsContent(
           {controller.relayDiscovery.errorTraceId ? (
             <CopyTraceIdButton traceId={controller.relayDiscovery.errorTraceId} />
           ) : null}
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            label="Try again"
+            tone="secondary"
             onPress={() => {
               void controller.refreshRelayEnvironments();
             }}
-            className="self-start rounded-full bg-subtle px-3.5 py-2 active:opacity-70"
-          >
-            <Text className="text-xs font-t3-bold text-foreground">Try again</Text>
-          </Pressable>
+          />
         </View>
       ) : null}
     </View>
@@ -194,6 +192,7 @@ function ConnectedCloudEnvironmentRow(props: {
   );
   const canRetry = presentation !== null && hasSavedBearerRoute(presentation.entry);
   const enabled = props.environment.isEnabled && !unsupported;
+  const { diagnosis } = useConnectionDiagnosis(props.environment.environmentId, presentation);
   const [lastDescriptor, setLastDescriptor] = useState(props.descriptor);
   if (props.descriptor !== undefined && props.descriptor !== lastDescriptor) {
     setLastDescriptor(props.descriptor);
@@ -214,7 +213,11 @@ function ConnectedCloudEnvironmentRow(props: {
       onValueChange={props.onSetEnabled}
       onToggleError={props.onToggleError}
       disabled={unsupported && !canRetry}
-      {...(enabled || unsupported ? {} : { statusText: "Off" })}
+      {...(enabled || unsupported
+        ? diagnosis
+          ? { statusText: diagnosis.headline }
+          : {}
+        : { statusText: "Off" })}
       value={enabled}
     />
   );
@@ -432,20 +435,13 @@ function CloudEnvironmentRowShell(props: {
 
 function CopyTraceIdButton(props: { readonly traceId: string }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Button
+      label="Copy trace ID"
+      tone="secondary"
       onPress={() => {
         copyTextWithHaptic(props.traceId, { target: "connection-trace-id" });
       }}
-      className="self-start flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-2 active:opacity-70"
-    >
-      <SymbolView
-        name="doc.on.doc"
-        size={12}
-        tintColorClassName={"accent-icon"}
-        type="monochrome"
-      />
-      <Text className="text-xs font-t3-bold text-foreground">Copy trace ID</Text>
-    </Pressable>
+      icon="doc.on.doc"
+    />
   );
 }

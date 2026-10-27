@@ -82,10 +82,13 @@ export function createEnvironmentPresentationAtoms<E>(input: {
         () => AVAILABLE_CONNECTION_STATE,
       );
       const previous = Option.getOrNull(get.self<EnvironmentPresentation | null>());
+      // The supervisor never publishes this placeholder; an enabled one starts out connecting.
       const connection: EnvironmentConnectionPresentation =
-        entry.unsupportedReason === undefined
-          ? presentEnvironmentConnection(state)
-          : { phase: "unsupported", error: entry.unsupportedReason, traceId: null };
+        entry.unsupportedReason !== undefined
+          ? { phase: "unsupported", error: entry.unsupportedReason, traceId: null }
+          : state === AVAILABLE_CONNECTION_STATE && entry.enabled
+            ? { phase: "connecting", error: null, traceId: null }
+            : presentEnvironmentConnection(state);
       const next = {
         entry,
         connection:
@@ -152,13 +155,17 @@ export function createEnvironmentPresentationAtoms<E>(input: {
     return previous !== null && mapsEqual(previous, next) ? previous : next;
   }).pipe(Atom.withLabel("environment-providers"));
 
-  // Usage limits ride on provider statuses, so these surfaces rebuild on every push by design.
+  // Enabled environments only, like serverConfigsAtom: a disabled connection keeps its cached
+  // config, and its accounts would otherwise count in usage limits. Usage limits ride on provider
+  // statuses, so these surfaces rebuild on every push by design.
   const presentationsWithProvidersAtom = Atom.make((get) => {
     const previous = Option.getOrNull(
       get.self<ReadonlyMap<EnvironmentId, EnvironmentPresentationWithProviders>>(),
     );
     const next = new Map<EnvironmentId, EnvironmentPresentationWithProviders>();
-    for (const [environmentId, presentation] of get(presentationsAtom)) {
+    for (const environmentId of enabledEnvironmentIds(get(input.catalogValueAtom))) {
+      const presentation = get(presentationAtom(environmentId));
+      if (presentation === null) continue;
       const serverConfig = get(input.serverConfigValueAtom(environmentId));
       const prior = previous?.get(environmentId);
       next.set(

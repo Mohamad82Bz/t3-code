@@ -42,7 +42,12 @@ import {
 } from "lucide-react";
 
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
-import { getProviderInstanceEntry } from "../../providerInstances";
+import {
+  applyProviderInstanceSettings,
+  deriveProviderInstanceEntries,
+  shouldShowInstanceBadge,
+  type ProviderInstanceEntry,
+} from "../../providerInstances";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { getTriggerDisplayModelName } from "./providerIconUtils";
 import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
@@ -294,11 +299,7 @@ function SubagentAvatar({
   );
 }
 
-/**
- * Reads only the two provider fields the avatar draws. Provider status pushes
- * replace the provider objects (fresh `checkedAt`), so selecting strings keeps
- * the avatar from re-rendering when nothing it shows changed.
- */
+// Select strings; status pushes replace providers even when avatar fields are unchanged.
 export function EnvironmentSubagentAvatar({
   environmentId,
   providerInstanceId,
@@ -358,7 +359,6 @@ export function SubagentNotificationLink(props: {
       null,
   );
   if (agent === null) return props.fallback;
-  // A subagent resumed since this notification shows its live status, not the outcome reported then.
   const resumed =
     NOTIFICATION_OUTCOME_STATUS[props.outcome] !== null &&
     subagentResumedSince(agent, props.createdAt);
@@ -439,21 +439,7 @@ function SubagentTimelineLink(props: {
         status={status ?? undefined}
       />
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <span className="min-w-0 truncate text-xs font-medium text-foreground">
-            {props.title}
-          </span>
-          {detail !== null && (props.event !== undefined || status !== "completed") ? (
-            <span
-              className={cn(
-                "shrink-0 text-3xs",
-                failed ? "text-destructive" : "text-muted-foreground",
-              )}
-            >
-              {statusLabel}
-            </span>
-          ) : null}
-        </span>
+        <span className="block truncate text-xs font-medium text-foreground">{props.title}</span>
         <span
           className={cn(
             "block text-2xs leading-relaxed",
@@ -469,6 +455,13 @@ function SubagentTimelineLink(props: {
           )}
         </span>
       </span>
+      {detail !== null && (props.event !== undefined || status !== "completed") ? (
+        <span
+          className={cn("shrink-0 text-xs", failed ? "text-destructive" : "text-muted-foreground")}
+        >
+          {statusLabel}
+        </span>
+      ) : null}
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
         {props.event ? props.event.timestamp : <SubagentElapsed agent={timing} />}
       </span>
@@ -531,8 +524,7 @@ function SubagentTimelineTooltip(
   },
 ) {
   const environmentId = props.parentRef.environmentId;
-  // The popup only mounts while open, so the full provider list is read here
-  // instead of in every timeline row.
+  // Read providers only in the open popup to avoid per-row subscriptions.
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
   const parent = useThreadShell(props.parentRef)?.source;
@@ -575,16 +567,20 @@ function EnvironmentHandoffRow({
 }) {
   const providers =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
-  return <HandoffRow {...props} providers={providers} />;
+  return <HandoffRow {...props} environmentId={environmentId} providers={providers} />;
 }
 
 export function HandoffRow(props: {
+  readonly environmentId: EnvironmentId;
   readonly endpoints: HandoffEndpoints;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly pending?: boolean;
   readonly failed?: boolean;
 }) {
   const { from: fromEndpoints, to } = props.endpoints;
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(props.environmentId));
+  const derived = deriveProviderInstanceEntries(props.providers);
+  const entries = settings ? applyProviderInstanceSettings(derived, settings, null) : derived;
   return (
     <TimelineSystemDivider
       label={props.pending ? "Context handoff pending" : "Context handoff"}
@@ -599,7 +595,7 @@ export function HandoffRow(props: {
               className="inline-flex min-w-0 items-center"
             >
               <HandoffEndpoint
-                providers={props.providers}
+                entries={entries}
                 instanceId={endpoint.instanceId}
                 model={endpoint.model}
               />
@@ -613,11 +609,7 @@ export function HandoffRow(props: {
           {fromEndpoints.length > 0 ? (
             <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
           ) : null}
-          <HandoffEndpoint
-            providers={props.providers}
-            instanceId={to.instanceId}
-            model={to.model}
-          />
+          <HandoffEndpoint entries={entries} instanceId={to.instanceId} model={to.model} />
         </span>
       }
     />
@@ -625,11 +617,12 @@ export function HandoffRow(props: {
 }
 
 function HandoffEndpoint(props: {
-  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly entries: ReadonlyArray<ProviderInstanceEntry>;
   readonly instanceId: ProviderInstanceId;
   readonly model?: string | undefined;
 }) {
-  const entry = getProviderInstanceEntry(props.providers, props.instanceId);
+  const entry = props.entries.find((candidate) => candidate.instanceId === props.instanceId);
+  const showBadge = entry !== undefined && shouldShowInstanceBadge(entry, props.entries);
   const model = props.model?.trim();
   const providerModel =
     model === undefined || model.length === 0
@@ -650,14 +643,18 @@ function HandoffEndpoint(props: {
         render={
           <span
             tabIndex={0}
-            className="inline-flex min-w-0 items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="inline-flex min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <ProviderInstanceIcon
               driverKind={entry?.driverKind ?? ProviderDriverKind.make(props.instanceId)}
               displayName={entry?.displayName ?? props.instanceId}
+              accentColor={entry?.accentColor}
               acpRegistryAgentId={entry?.acpRegistryAgentId}
               acpRegistryIconUrl={entry?.acpRegistryIconUrl}
-              iconClassName="size-3"
+              showBadge={showBadge}
+              size="compact"
+              iconClassName={cn(showBadge && "opacity-60")}
+              indicatorBackground="var(--background)"
             />
             <span
               className={cn("truncate font-medium", labelColor.className)}

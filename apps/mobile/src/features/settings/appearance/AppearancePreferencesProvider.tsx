@@ -68,6 +68,8 @@ interface AppearancePreferencesContextValue {
   readonly setTerminalFontSize: (value: number | null) => void;
   readonly setCodeFontSize: (value: number | null) => void;
   readonly setCodeWordBreak: (value: boolean) => void;
+  readonly mathRenderingEnabled: boolean;
+  readonly setMathRenderingEnabled: (value: boolean) => void;
 }
 
 const AppearancePreferencesContext = createContext<AppearancePreferencesContextValue | null>(null);
@@ -209,10 +211,7 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     (value: MobileThemeMode) => {
       const current = appliedRuntimeStateRef.current ?? runtimeState;
 
-      // Clear a forced native appearance before publishing System. The
-      // resulting useColorScheme notification still sees the previous forced
-      // preference, so React batches the actual system palette into the one
-      // urgent preference commit below.
+      // Clear forced appearance before publishing System so useColorScheme batches the system palette into the preference commit.
       if (value === "system") {
         Appearance.setColorScheme("unspecified");
       }
@@ -264,6 +263,12 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     [updatePreferences],
   );
 
+  const mathRenderingEnabled = storedPreferences?.mathRenderingEnabled === true;
+  const setMathRenderingEnabled = useCallback(
+    (value: boolean) => updatePreferences({ mathRenderingEnabled: value }),
+    [updatePreferences],
+  );
+
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({
       appearance,
@@ -284,6 +289,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setTerminalFontSize,
       setCodeFontSize,
       setCodeWordBreak,
+      mathRenderingEnabled,
+      setMathRenderingEnabled,
     }),
     [
       appearance,
@@ -303,6 +310,8 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
       setTerminalFontSize,
       setCodeFontSize,
       setCodeWordBreak,
+      mathRenderingEnabled,
+      setMathRenderingEnabled,
     ],
   );
 
