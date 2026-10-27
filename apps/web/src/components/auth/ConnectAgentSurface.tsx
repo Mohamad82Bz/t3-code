@@ -80,9 +80,7 @@ function readAuthorizationRequest(): AuthMcpAuthorizationRequest {
   return Object.fromEntries(new URL(window.location.href).searchParams);
 }
 
-/**
- * A session may only grant access whose scopes it holds itself.
- */
+/** Sessions can grant only scopes they hold. */
 function oneClickApproves(details: AuthMcpApprovalDetails, access: AuthMcpClientAccess) {
   return details.csrfToken !== undefined && (details.oneClickAccess ?? []).includes(access);
 }
@@ -235,8 +233,8 @@ export function ConnectAgentSurface() {
               value={pairingCode}
             />
             <p className="text-xs text-muted-foreground">
-              Create one in Settings → Connections, or run <code>t3 auth pairing create</code> on
-              this machine.
+              Create one in Settings → Sharing & access, or run <code>t3 auth pairing create</code>{" "}
+              on this machine.
             </p>
           </div>
         )}

@@ -102,12 +102,12 @@ export function CompactCodexCredentialCard({
                 <PowerOffIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
               ) : null}
               <span className="shrink-0 text-foreground">
-                {sessionLeft === null ? "—" : `${sessionLeft}%`}{" "}
+                {sessionLeft === null ? "N/A" : `${sessionLeft}%`}{" "}
                 <span className="text-muted-foreground">/</span>{" "}
-                {weeklyLeft === null ? "—" : `${weeklyLeft}%`}
+                {weeklyLeft === null ? "N/A" : `${weeklyLeft}%`}
               </span>
               <span className="ms-auto min-w-0 truncate text-2xs text-muted-foreground">
-                {busy === "toggle" ? "…" : (resetsIn?.replace("resets in ", "↻ ") ?? "—")}
+                {busy === "toggle" ? "…" : (resetsIn?.replace("resets in ", "↻ ") ?? "N/A")}
               </span>
             </span>
             <span aria-hidden className="h-1 w-full overflow-hidden rounded-full bg-muted">
