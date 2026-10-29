@@ -1753,12 +1753,20 @@ function textFromClaudeContent(content: SDKAssistantMessage["message"]["content"
   return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
-// Claude 5.1+ emits at most one pre-tool text block as thinking; treat only a second consecutive thinking block as text.
-function claudeWritesUpdatesAsThinking(model: string): boolean {
-  const match = /claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?!\d)/u.exec(model);
-  if (match === null) return false;
-  const major = Number(match[1]);
-  return major > 5 || (major === 5 && Number(match[2] ?? 0) >= 1);
+type ClaudeThinkingContentBlock = Extract<
+  ClaudeAssistantContentBlock,
+  { readonly type: "thinking" }
+>;
+
+// CLIProxyAPI represents Codex commentary as unsigned Claude thinking. Its later
+// marker is handled too, so the classification stays stable across proxy versions.
+function isClaudeCommentaryThinkingBlock(
+  block: ClaudeAssistantContentBlock,
+): block is ClaudeThinkingContentBlock {
+  return (
+    block.type === "thinking" &&
+    (block.signature === undefined || block.signature === "cpa:commentary:v1")
+  );
 }
 
 // In SDK mode, /goal appears only in transcripts: command output names it and Stop hooks report unmet checks.
@@ -3880,12 +3888,6 @@ interface ActiveClaudeTurnContext {
     readonly nextBlockIndex: Map<string, number>;
     readonly snapshotBlockIndex: Map<string, number>;
     readonly snapshots: Set<string>;
-    lastThinking: {
-      readonly messageId: string;
-      readonly itemId: string;
-      readonly text: string;
-      readonly followsThinking: boolean;
-    } | null;
     readonly blocks: Map<
       string,
       { readonly startedAt: DateTime.Utc; readonly ordinal: number; text: string }
@@ -6898,10 +6900,24 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           at: DateTime.Utc,
         ) {
           const thinking = message.message.content.flatMap((block) =>
-            block.type === "thinking" && block.thinking.trim().length > 0 ? [block.thinking] : [],
+            block.type === "thinking" && block.thinking.trim().length > 0
+              ? [{ block, text: block.thinking }]
+              : [],
           );
-          for (const [index, text] of thinking.entries()) {
+          for (const [index, { block, text }] of thinking.entries()) {
             const nativeItemId = `${message.uuid}:thinking:${index}`;
+            if (isClaudeCommentaryThinkingBlock(block)) {
+              yield* emitSubagentConversationMessage({
+                nativeItemId,
+                threadId: target.childThreadId,
+                rootNodeId: target.childRootNodeId,
+                role: "assistant",
+                text,
+                ordinal: target.nextOrdinal(),
+                now: at,
+              });
+              continue;
+            }
             yield* emitProviderEvent({
               type: "turn_item.updated",
               driver: CLAUDE_PROVIDER,
@@ -8251,24 +8267,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             context.reasoning.snapshots.add(message.uuid);
             // The SDK snapshots each completed block; count thinking blocks separately to preserve streamed ids.
             for (const block of message.message.content) {
-              if (block.type !== "thinking") {
-                const update = context.reasoning.lastThinking;
-                context.reasoning.lastThinking = null;
-                if (
-                  block.type === "tool_use" &&
-                  update !== null &&
-                  update.messageId === message.message.id &&
-                  update.followsThinking &&
-                  claudeWritesUpdatesAsThinking(message.message.model)
-                ) {
-                  yield* emitAssistantTextArtifacts({
-                    context,
-                    nativeItemId: update.itemId,
-                    text: update.text,
-                  });
-                }
-                continue;
-              }
+              if (block.type !== "thinking") continue;
               const index = context.reasoning.snapshotBlockIndex.get(message.message.id) ?? 0;
               context.reasoning.snapshotBlockIndex.set(message.message.id, index + 1);
               const itemId = `${message.message.id}:thinking:${index}`;
@@ -8280,15 +8279,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ...(finalText ? { finalText } : {}),
                 emitEmpty: false,
               });
-              const previous = context.reasoning.lastThinking;
-              context.reasoning.lastThinking = completedText.trim()
-                ? {
-                    messageId: message.message.id,
-                    itemId,
-                    text: completedText,
-                    followsThinking: previous !== null && previous.messageId === message.message.id,
-                  }
-                : null;
+              if (isClaudeCommentaryThinkingBlock(block) && completedText.trim()) {
+                yield* emitAssistantTextArtifacts({
+                  context,
+                  nativeItemId: itemId,
+                  text: completedText,
+                });
+              }
             }
           }
 
@@ -10154,7 +10151,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 streamBlocks: new Map(),
                 nextBlockIndex: new Map(),
                 snapshotBlockIndex: new Map(),
-                lastThinking: null,
                 snapshots: new Set(),
                 blocks: new Map(),
               },

@@ -4765,6 +4765,70 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect("projects unsigned Claude thinking blocks as assistant text", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("commentary-thinking-attempt"),
+          text: "Check the plan",
+          attachments: [],
+          modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "gpt-6-luna" },
+        }),
+      );
+      const snapshot = (id: string, uuid: string, content: ReadonlyArray<unknown>) =>
+        claudeSdkFrame({
+          type: "assistant",
+          uuid,
+          session_id: WAKE_NATIVE_SESSION,
+          parent_tool_use_id: null,
+          message: { id, model: "gpt-6-luna", content },
+        });
+      const frames = [
+        snapshot("unsigned-message", "unsigned-snapshot", [
+          { type: "thinking", thinking: "Checking the files first." },
+        ]),
+        snapshot("marked-message", "marked-snapshot", [
+          {
+            type: "thinking",
+            thinking: "I will make the requested edit.",
+            signature: "cpa:commentary:v1",
+          },
+        ]),
+        snapshot("signed-message", "signed-snapshot", [
+          { type: "thinking", thinking: "The change needs a regression test.", signature: "sig" },
+        ]),
+        makeResultFrame({ uuid: "commentary-thinking-result", result: "" }),
+      ];
+      for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
+      yield* Queue.take(harness.terminalReceipts);
+      const latest = new Map(
+        harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          (event.turnItem.type === "reasoning" || event.turnItem.type === "assistant_message")
+            ? [[event.turnItem.id, event.turnItem] as const]
+            : [],
+        ),
+      );
+      assert.deepEqual(
+        [...latest.values()].map((item) => [item.type, item.text]),
+        [
+          ["assistant_message", "Checking the files first."],
+          ["assistant_message", "I will make the requested edit."],
+          ["reasoning", "The change needs a regression test."],
+        ],
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   // regression: #15892 non-execution metadata is carried through, not guessed from result text
   it.effect.each(["cancelled", "denied", "permission_denied", undefined])(
     "preserves native tool non-execution metadata %s without inferring a denial from text",
