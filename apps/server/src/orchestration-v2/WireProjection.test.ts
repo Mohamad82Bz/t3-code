@@ -429,7 +429,7 @@ describe("orchestration V2 wire projection", () => {
       ...base,
       type: "file_change" as const,
       fileName: "large.txt",
-      diffStr: `@@ -0,0 +1,1000 @@\n${`+${"x".repeat(40)}\n`.repeat(1000)}`,
+      diffStr: `@@ -0,0 +1,1000 @@\n${`+${"x".repeat(400)}\n`.repeat(1000)}`,
     };
     const detail = projectTurnItemForDetail(item);
     expect(detail).toMatchObject({ additions: 1000, deletions: 0 });

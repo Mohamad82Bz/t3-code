@@ -229,15 +229,17 @@ export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): Orchest
           item.result === null ? null : (truncateDetail(item.result, MAX_ON_DEMAND_BYTES) ?? null),
       };
     case "file_change":
+      const diffStr =
+        item.nativeItemRef?.driver === "claudeAgent" && item.status === "completed"
+          ? (claudeFileChangeDiff(item.diffStr) ?? item.diffStr)
+          : item.diffStr;
       return {
         ...projectTurnItemForWire(item),
-        ...(item.diffStr === undefined
-          ? {}
-          : { diffStr: truncateDetail(item.diffStr, MAX_ON_DEMAND_BYTES) }),
-        ...(!item.diffStr?.trim() && item.oldStr !== undefined
+        ...(diffStr === undefined ? {} : { diffStr: truncateDetail(diffStr, MAX_ON_DEMAND_BYTES) }),
+        ...(!diffStr?.trim() && item.oldStr !== undefined
           ? { oldStr: truncateDetail(item.oldStr, MAX_ON_DEMAND_BYTES) }
           : {}),
-        ...(!item.diffStr?.trim() && item.newStr !== undefined
+        ...(!diffStr?.trim() && item.newStr !== undefined
           ? { newStr: truncateDetail(item.newStr, MAX_ON_DEMAND_BYTES) }
           : {}),
       };
