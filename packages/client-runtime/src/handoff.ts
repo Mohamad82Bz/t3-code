@@ -36,11 +36,10 @@ export function resolvePendingHandoff(
   // Saved composer defaults can outlive a disabled provider; they are not a pending switch.
   if (target?.enabled === false) return null;
   const needsHandoff =
-    from.instanceId === selection.instanceId
-      ? from.model !== selection.model && target?.requiresNewThreadForModelChange === true
-      : source?.continuation?.groupKey === undefined ||
-        source.driver !== target?.driver ||
-        source.continuation.groupKey !== target.continuation?.groupKey;
+    from.instanceId !== selection.instanceId &&
+    (source?.continuation?.groupKey === undefined ||
+      source.driver !== target?.driver ||
+      source.continuation.groupKey !== target.continuation?.groupKey);
   return needsHandoff ? { from: [from], to: selection } : null;
 }
 
