@@ -208,9 +208,10 @@ import {
 export const CLAUDE_PROVIDER = ProviderDriverKind.make("claudeAgent");
 const CLAUDE_AGENT_SDK_QUERY_PROTOCOL = "claude-agent-sdk.query" as const;
 
-function claudeContextWindow(modelSelection: ModelSelection): number | null {
+function claudeContextWindow(modelSelection: ModelSelection, override: string): number | undefined {
   return (
-    resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, modelSelection) ?? null
+    Number(override) ||
+    resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, modelSelection)
   );
 }
 
@@ -256,7 +257,7 @@ export function claudeProviderTurnTokenUsage(
     readonly cache_creation?: ClaudeCacheCreation | null;
     readonly output_tokens: number;
   },
-  modelSelection: ModelSelection,
+  maxTokens: number | null,
   updatedAt: string,
   autoCompactWindow = "",
   requestedAt?: DateTime.Utc,
@@ -264,7 +265,6 @@ export function claudeProviderTurnTokenUsage(
   const inputTokens = claudeMessageInputTokens(usage);
   const outputTokens = usage.output_tokens;
   const promptCacheTtlMs = claudePromptCacheTtlMs(usage.cache_creation);
-  const maxTokens = claudeContextWindow(modelSelection);
   // The cache lifetime starts with the request, not when its response ends.
   const promptCacheExpiresAt =
     promptCacheTtlMs === undefined || requestedAt === undefined
@@ -4895,7 +4895,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           if (requestStarted && context.streamUsage !== null) context.streamUsage.requestedAt = now;
           const tokenUsage = claudeProviderTurnTokenUsage(
             usage,
-            context.input.modelSelection,
+            claudeContextWindow(
+              context.input.modelSelection,
+              adapterOptions.settings.contextWindow,
+            ) ?? null,
             DateTime.formatIso(now),
             adapterOptions.settings.autoCompactWindow,
             context.streamUsage?.requestedAt,
@@ -8433,7 +8436,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ? Math.round(postTokens)
                 : undefined;
             if (afterTokenCount !== undefined) {
-              const maxTokens = claudeContextWindow(context.input.modelSelection);
+              const maxTokens =
+                claudeContextWindow(
+                  context.input.modelSelection,
+                  adapterOptions.settings.contextWindow,
+                ) ?? null;
               yield* emitProviderEvent({
                 type: "provider_turn.updated",
                 driver: CLAUDE_PROVIDER,
@@ -10716,8 +10723,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           providerSessionId: input.providerSessionId,
           providerSession: session,
           getModelContextWindow: (selection) =>
-            Number(adapterOptions.settings.contextWindow) ||
-            resolveClaudeCatalogContextWindowTokens(BUNDLED_CLAUDE_MODEL_CATALOG, selection),
+            claudeContextWindow(selection, adapterOptions.settings.contextWindow),
           getAutoCompactThreshold: () =>
             Number(adapterOptions.settings.autoCompactWindow) || undefined,
           events: Stream.fromEffectRepeat(Queue.take(events)),

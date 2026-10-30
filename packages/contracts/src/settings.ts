@@ -756,7 +756,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "Context window override",
         description:
-          "Maximum context tokens for this provider instance. Leave empty to detect automatically; unknown models default to 1,000,000. This does not increase the model's actual capacity.",
+          "Maximum context tokens for this provider instance. Leave empty to use the model catalog; unknown models show token counts without a percentage. This does not increase the model's actual capacity.",
         providerSettingsForm: {
           placeholder: "e.g. 500000",
           clearWhenEmpty: "omit",
