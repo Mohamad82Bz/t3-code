@@ -242,6 +242,7 @@ it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
 );
 
 it("holds a completion through a continuation gap and notifies once it settles", async () => {
+  using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
   await using app = setup();
   app.start();
   using _timers = fakeTimers();
@@ -259,6 +260,13 @@ it("holds a completion through a continuation gap and notifies once it settles",
   expect(TestNotification.sent).toEqual([]);
   await vi.advanceTimersByTimeAsync(1);
   expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Thread completed"]);
+  const notification = TestNotification.sent[0]!;
+  expect(notification.options.requireInteraction).not.toBe(true);
+  notification.dispatchEvent(new Event("click"));
+  expect(state.navigate).toHaveBeenCalledWith({
+    to: "/$environmentId/$threadId",
+    params: { environmentId: EnvironmentId.make("one"), threadId: "thread" },
+  });
 });
 
 it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
