@@ -132,6 +132,7 @@ export function UsageProviderSettings({
           environmentId={environmentId}
           environmentLabel={environmentLabel}
           source={{ id: UsageLimitSourceId.make(editing), config: sources[editing] }}
+          sources={sources}
         />
       ) : null}
       {adding && !readOnly ? (
@@ -140,6 +141,7 @@ export function UsageProviderSettings({
           onOpenChange={setAdding}
           environmentId={environmentId}
           environmentLabel={environmentLabel}
+          sources={sources}
         />
       ) : null}
     </>
