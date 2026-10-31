@@ -8857,7 +8857,12 @@ it("keeps every ACP v2 file patch instead of counting only the first block", () 
         patch: { format: "git_patch", text },
       })),
     ),
-    patches.join("\n"),
+    patches
+      .map(
+        (patch, index) =>
+          `diff --git "a//repo/${index}.txt" "b//repo/${index}.txt"\n--- "a//repo/${index}.txt"\n+++ "b//repo/${index}.txt"\n${patch}`,
+      )
+      .join("\n"),
   );
 });
 
