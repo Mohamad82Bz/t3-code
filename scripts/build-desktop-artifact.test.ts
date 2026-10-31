@@ -942,7 +942,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ),
   );
 
-  it.effect("rejects an embedded archive built for a different release version", () =>
+  it.effect("requires an explicit version to preserve a different release's embedded archive", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const fixture = yield* makeWindowsPayloadFixture({
@@ -959,6 +959,15 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
         assert.instanceOf(error, WindowsPackagedPayloadValidationError);
         assert.equal(error.reason, "wsl-runtime-invalid");
+        const result = yield* validateWindowsPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+          appExecutableName: fixture.appExecutableName,
+          targetArch: "x64",
+          appVersion: "9.9.9",
+          wslRuntimeVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+          expectWslRuntime: true,
+        }).pipe(Effect.provideService(HostProcess.Platform, "linux"));
+        assert.equal(result.packagedAppDir, fixture.packagedAppDir);
       }),
     ),
   );

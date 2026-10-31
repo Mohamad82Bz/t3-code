@@ -3305,6 +3305,7 @@ export const validateWindowsPackagedPayload = Effect.fn(
   readonly appExecutableName: string;
   readonly targetArch: typeof BuildArch.Type;
   readonly appVersion: string;
+  readonly wslRuntimeVersion?: string | undefined;
   readonly expectWslRuntime?: boolean;
   readonly fileLimit?: number;
   readonly verbose?: boolean;
@@ -3464,7 +3465,10 @@ export const validateWindowsPackagedPayload = Effect.fn(
     }
     const members = parseWslRuntimeArchiveMembers(listing.stdout);
     // The WSL installer finds t3 under the archive's single stem-named directory.
-    const stem = wslRuntimeArchiveStem(input.appVersion, input.targetArch);
+    const stem = wslRuntimeArchiveStem(
+      input.wslRuntimeVersion ?? input.appVersion,
+      input.targetArch,
+    );
     const topLevel = new Set(members.map((member) => member.split("/")[0]));
     if (topLevel.size !== 1 || !topLevel.has(stem)) {
       return yield* invalidWslRuntime(
@@ -4040,8 +4044,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   }
 
   if (options.platform === "win") {
+    const wslRuntimeVersion = yield* Config.String("T3CODE_DESKTOP_WSL_RUNTIME_VERSION").pipe(
+      Config.option,
+    );
     yield* validateWindowsPackagedPayload({
       stageDistDir,
+      wslRuntimeVersion: Option.getOrUndefined(wslRuntimeVersion),
       appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,
       targetArch: options.arch,
       appVersion,

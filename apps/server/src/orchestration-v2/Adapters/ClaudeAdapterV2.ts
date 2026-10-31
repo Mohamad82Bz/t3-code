@@ -3049,7 +3049,11 @@ function claudeFileChangeText(output: ClaudeNativeToolOutput): string {
     output.type === "structured_tool_use_result"
       ? Option.getOrUndefined(decodeClaudeFileEditResult(output.value))
       : undefined;
-  if (result === undefined) return claudeNativeToolOutputText(output);
+  if (result === undefined)
+    return (
+      claudeFileChangeDiff(claudeNativeToolOutputValue(output)) ??
+      claudeNativeToolOutputText(output)
+    );
   const patch =
     result.structuredPatch.length === 0 && result.type === "create" && result.content !== undefined
       ? structuredPatch("/dev/null", result.filePath, "", result.content)
@@ -5683,8 +5687,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             itemType === "command_execution"
               ? claudeCommandOutputText(input.output)
               : itemType === "file_change"
-                ? ((input.status === "completed" ? claudeFileChangeDiff(outputValue) : undefined) ??
-                  claudeFileChangeText(input.output))
+                ? claudeFileChangeText(input.output)
                 : claudeNativeToolOutputText(input.output);
           const turnItem: OrchestrationV2TurnItem =
             itemType === "command_execution"
@@ -5700,7 +5703,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     type: "file_change",
                     fileName: fileNameFromClaudeTool(input.toolName, input.toolInput),
                     ...(outputText.length === 0 ? {} : { diffStr: outputText }),
-                    ...(input.status === "completed" ? claudeFileChangeStats(outputText) : {}),
+                    ...(input.status === "completed" ? claudeFileChangeStats(outputValue) : {}),
                   }
                 : itemType === "web_search"
                   ? {

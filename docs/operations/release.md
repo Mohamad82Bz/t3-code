@@ -494,7 +494,10 @@ by the Linux desktop job and handed to the Windows desktop build as
 `--wsl-runtime`, copied in verbatim so WSL runs the exact bytes a Linux user
 downloads. WSL verifies and extracts that archive
 into `~/.t3/wsl-runtime/sha256-<archive-digest>` inside the selected distro,
-then reuses it for later launches of the same update.
+then reuses it for later launches of the same update. Local Windows-only builds
+that deliberately preserve an older archive must set
+`T3CODE_DESKTOP_WSL_RUNTIME_VERSION` to that archive's release version; otherwise
+validation requires the desktop version. The preserved Linux runtime is not upgraded.
 
 Windows keeps JavaScript and package metadata inside `app.asar` and unpacks only
 native libraries and helper executables. Avoid enabling whole-package smart
