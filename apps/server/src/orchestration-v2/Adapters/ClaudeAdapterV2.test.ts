@@ -5290,68 +5290,140 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect("projects unsigned Claude thinking blocks as assistant text", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeWakeHarness;
-      yield* harness.runtime.startTurn(
-        makeClaudeTestTurnInput({
-          threadId: harness.threadId,
-          providerThread: harness.providerThread,
-          now: yield* DateTime.now,
-          attemptId: RunAttemptId.make("commentary-thinking-attempt"),
-          text: "Check the plan",
-          attachments: [],
-          modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "gpt-6-luna" },
-        }),
-      );
-      const snapshot = (id: string, uuid: string, content: ReadonlyArray<unknown>) =>
-        claudeSdkFrame({
-          type: "assistant",
-          uuid,
-          session_id: WAKE_NATIVE_SESSION,
-          parent_tool_use_id: null,
-          message: { id, model: "gpt-6-luna", content },
-        });
-      const frames = [
-        snapshot("unsigned-message", "unsigned-snapshot", [
-          { type: "thinking", thinking: "Checking the files first." },
-        ]),
-        snapshot("marked-message", "marked-snapshot", [
-          {
-            type: "thinking",
-            thinking: "I will make the requested edit.",
-            signature: "cpa:commentary:v1",
-          },
-        ]),
-        snapshot("signed-message", "signed-snapshot", [
-          { type: "thinking", thinking: "The change needs a regression test.", signature: "sig" },
-        ]),
-        makeResultFrame({ uuid: "commentary-thinking-result", result: "" }),
-      ];
-      for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
-      yield* Queue.take(harness.terminalReceipts);
-      const latest = new Map(
-        harness.events.flatMap((event) =>
-          event.type === "turn_item.updated" &&
-          (event.turnItem.type === "reasoning" || event.turnItem.type === "assistant_message")
-            ? [[event.turnItem.id, event.turnItem] as const]
+  it.effect.each(["completed", "interrupted"] as const)(
+    "projects proxy commentary without an assistant snapshot when %s",
+    (status) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("commentary-thinking-attempt"),
+            text: "Check the plan",
+            attachments: [],
+            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "gpt-6-luna" },
+          }),
+        );
+        const snapshot = (id: string, uuid: string, content: ReadonlyArray<unknown>) =>
+          claudeSdkFrame({
+            type: "assistant",
+            uuid,
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            message: { id, model: "gpt-6-luna", content },
+          });
+        const stream = (event: unknown) =>
+          claudeSdkFrame({
+            type: "stream_event",
+            event,
+            parent_tool_use_id: null,
+            session_id: WAKE_NATIVE_SESSION,
+            uuid: "commentary-stream-frame",
+          });
+        const frames = [
+          snapshot("unsigned-message", "unsigned-snapshot", [
+            { type: "thinking", thinking: "Checking the files first." },
+          ]),
+          snapshot("marked-message", "marked-snapshot", [
+            {
+              type: "thinking",
+              thinking: "I will make the requested edit.",
+              signature: "cpa:commentary:v1",
+            },
+          ]),
+          snapshot("signed-message", "signed-snapshot", [
+            { type: "thinking", thinking: "The change needs a regression test.", signature: "sig" },
+          ]),
+          stream({ type: "message_start", message: { id: "streamed-commentary" } }),
+          stream({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "Real reasoning." },
+          }),
+          stream({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "signature_delta", signature: "sig" },
+          }),
+          stream({ type: "content_block_stop", index: 0 }),
+          stream({
+            type: "content_block_start",
+            index: 1,
+            content_block: { type: "thinking", thinking: "" },
+          }),
+          stream({
+            type: "content_block_delta",
+            index: 1,
+            delta: { type: "thinking_delta", thinking: "Here is the update before steering." },
+          }),
+          stream({ type: "content_block_stop", index: 1 }),
+          stream({
+            type: "content_block_start",
+            index: 2,
+            content_block: { type: "thinking", thinking: "Marked streamed update." },
+          }),
+          stream({
+            type: "content_block_delta",
+            index: 2,
+            delta: { type: "signature_delta", signature: "cpa:commentary:" },
+          }),
+          stream({
+            type: "content_block_delta",
+            index: 2,
+            delta: { type: "signature_delta", signature: "v1" },
+          }),
+          stream({ type: "content_block_stop", index: 2 }),
+          stream({ type: "message_stop" }),
+          makeResultFrame({
+            uuid: "commentary-thinking-result",
+            result: "",
+            ...(status === "interrupted" ? { terminalReason: "aborted_streaming" as const } : {}),
+          }),
+        ];
+        for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
+        yield* Queue.take(harness.terminalReceipts);
+        const latest = new Map(
+          harness.events.flatMap((event) =>
+            event.type === "turn_item.updated" &&
+            (event.turnItem.type === "reasoning" || event.turnItem.type === "assistant_message")
+              ? [[event.turnItem.id, event.turnItem] as const]
+              : [],
+          ),
+        );
+        assert.deepEqual(
+          [...latest.values()].map((item) => [item.type, item.text]),
+          [
+            ["assistant_message", "Checking the files first."],
+            ["assistant_message", "I will make the requested edit."],
+            ["reasoning", "The change needs a regression test."],
+            ["reasoning", "Real reasoning."],
+            ["assistant_message", "Here is the update before steering."],
+            ["assistant_message", "Marked streamed update."],
+          ],
+        );
+        const messages = harness.events.flatMap((event) =>
+          event.type === "message.updated" && event.message.role === "assistant"
+            ? [event.message]
             : [],
+        );
+        assert.deepEqual(
+          messages.map((message) => message.text),
+          [
+            "Checking the files first.",
+            "I will make the requested edit.",
+            "Here is the update before steering.",
+            "Marked streamed update.",
+          ],
+        );
+        assert.equal(new Set(messages.map((message) => message.id)).size, messages.length);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
-      );
-      assert.deepEqual(
-        [...latest.values()].map((item) => [item.type, item.text]),
-        [
-          ["assistant_message", "Checking the files first."],
-          ["assistant_message", "I will make the requested edit."],
-          ["reasoning", "The change needs a regression test."],
-        ],
-      );
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
-    ),
   );
 
   // regression: #15892 non-execution metadata is carried through, not guessed from result text

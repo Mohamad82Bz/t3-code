@@ -1770,20 +1770,9 @@ function textFromClaudeContent(content: SDKAssistantMessage["message"]["content"
   return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
-type ClaudeThinkingContentBlock = Extract<
-  ClaudeAssistantContentBlock,
-  { readonly type: "thinking" }
->;
-
-// CLIProxyAPI represents Codex commentary as unsigned Claude thinking. Its later
-// marker is handled too, so the classification stays stable across proxy versions.
-function isClaudeCommentaryThinkingBlock(
-  block: ClaudeAssistantContentBlock,
-): block is ClaudeThinkingContentBlock {
-  return (
-    block.type === "thinking" &&
-    (block.signature === undefined || block.signature === "cpa:commentary:v1")
-  );
+// CLIProxyAPI represents Codex commentary as unsigned Claude thinking or with this marker.
+function isClaudeCommentarySignature(signature: string | undefined): boolean {
+  return signature === undefined || signature === "" || signature === "cpa:commentary:v1";
 }
 
 // In SDK mode, /goal appears only in transcripts: command output names it and Stop hooks report unmet checks.
@@ -4008,7 +3997,13 @@ interface ActiveClaudeTurnContext {
     readonly snapshots: Set<string>;
     readonly blocks: Map<
       string,
-      { readonly startedAt: DateTime.Utc; readonly ordinal: number; text: string }
+      {
+        readonly startedAt: DateTime.Utc;
+        readonly ordinal: number;
+        text: string;
+        signature: string | undefined;
+        stopped: boolean;
+      }
     >;
   };
   // Snapshots repeat message_start input, sometimes as zeros, so only fill gaps in streamed usage.
@@ -7046,7 +7041,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           for (const [index, { block, text }] of thinking.entries()) {
             const nativeItemId = `${message.uuid}:thinking:${index}`;
-            if (isClaudeCommentaryThinkingBlock(block)) {
+            if (isClaudeCommentarySignature(block.signature)) {
               yield* emitSubagentConversationMessage({
                 nativeItemId,
                 threadId: target.childThreadId,
@@ -7272,6 +7267,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               startedAt: yield* DateTime.now,
               ordinal: yield* resolveItemOrdinal(context, itemId),
               text: "",
+              signature: undefined,
+              stopped: false,
             });
           }
         });
@@ -7380,6 +7377,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly result?: SDKResultMessage;
         }) {
           yield* reasoningDeltas.flushTurn(input.context.nativeTurnId);
+          // Steering can close an unsigned proxy block without its assistant snapshot.
+          for (const [itemId, block] of input.context.reasoning.blocks) {
+            if (
+              block.stopped &&
+              isClaudeCommentarySignature(block.signature) &&
+              block.text.trim()
+            ) {
+              yield* emitAssistantTextArtifacts({
+                context: input.context,
+                nativeItemId: itemId,
+                text: block.text,
+              });
+            }
+          }
           if (input.context.compaction?.status === "running") {
             const reason = input.result?.subtype === "success" ? input.result.result.trim() : "";
             yield* emitProviderEvent({
@@ -8401,6 +8412,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const itemId = `${reasoning.messageId}:thinking:${index}`;
               reasoning.streamBlocks.set(event.index, itemId);
               yield* ensureReasoningBlock(context, itemId);
+              const block = reasoning.blocks.get(itemId)!;
+              block.signature = event.content_block.signature;
               yield* reasoningDeltas.append({
                 turnId: context.nativeTurnId,
                 itemId,
@@ -8418,9 +8431,19 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   delta: event.delta.thinking,
                 });
               }
+            } else if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "signature_delta"
+            ) {
+              const itemId = reasoning.streamBlocks.get(event.index);
+              const block = itemId === undefined ? undefined : reasoning.blocks.get(itemId);
+              if (block !== undefined) {
+                block.signature = (block.signature ?? "") + event.delta.signature;
+              }
             } else if (event.type === "content_block_stop") {
               const itemId = reasoning.streamBlocks.get(event.index);
               if (itemId !== undefined) {
+                reasoning.blocks.get(itemId)!.stopped = true;
                 yield* reasoningDeltas.complete({
                   turnId: context.nativeTurnId,
                   itemId,
@@ -8444,14 +8467,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               context.reasoning.snapshotBlockIndex.set(message.message.id, index + 1);
               const itemId = `${message.message.id}:thinking:${index}`;
               yield* ensureReasoningBlock(context, itemId);
-              const finalText = block.thinking || context.reasoning.blocks.get(itemId)?.text;
+              const streamed = context.reasoning.blocks.get(itemId)!;
+              streamed.signature = block.signature;
+              streamed.stopped = true;
+              const finalText = block.thinking || streamed.text;
               const completedText = yield* reasoningDeltas.complete({
                 turnId: context.nativeTurnId,
                 itemId,
                 ...(finalText ? { finalText } : {}),
                 emitEmpty: false,
               });
-              if (isClaudeCommentaryThinkingBlock(block) && completedText.trim()) {
+              if (isClaudeCommentarySignature(block.signature) && completedText.trim()) {
                 yield* emitAssistantTextArtifacts({
                   context,
                   nativeItemId: itemId,
