@@ -80,7 +80,7 @@ const make = Effect.gen(function* () {
   let shortcutGeneration = 0;
   const context = yield* Effect.context<DesktopWindow.DesktopWindow>();
   const runPromise = Effect.runPromiseWith(context);
-  const workerPath = NodePath.join(__dirname, "GlobalDictationShortcutWorker.cjs");
+  const workerPath = NodePath.join(__dirname, "dictation", "GlobalDictationShortcutWorker.cjs");
 
   const dispatch = (event: DesktopDictationShortcutEvent) => {
     const dispatchEffect = desktopWindow.dispatchDictationShortcut?.(event);
