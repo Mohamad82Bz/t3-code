@@ -5,6 +5,7 @@ import type {
   DesktopPreviewRecordingInputEvent,
   DesktopPreviewTabState,
   DesktopSnapShotEvent,
+  DesktopDictationShortcutEvent,
 } from "@t3tools/contracts";
 import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -122,6 +123,19 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),
+  getDictationSessionConfig: () =>
+    ipcRenderer.invoke(IpcChannels.GET_DICTATION_SESSION_CONFIG_CHANNEL),
+  onDictationShortcut: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, event: unknown) => {
+      if (typeof event !== "object" || event === null || !("type" in event)) return;
+      const type = event.type;
+      if (type !== "toggle" && type !== "down" && type !== "up") return;
+      listener({ type } satisfies DesktopDictationShortcutEvent);
+    };
+    ipcRenderer.on(IpcChannels.DICTATION_SHORTCUT_CHANNEL, wrappedListener);
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.DICTATION_SHORTCUT_CHANNEL, wrappedListener);
+  },
   requestSnapShotPermissions: (includeAccessibility) =>
     ipcRenderer.invoke(IpcChannels.REQUEST_SNAP_SHOT_PERMISSIONS_CHANNEL, includeAccessibility),
   getSnapShotState: () => ipcRenderer.invoke(IpcChannels.GET_SNAP_SHOT_STATE_CHANNEL),

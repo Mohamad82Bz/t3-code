@@ -1011,6 +1011,17 @@ export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+export const DesktopDictationShortcutEvent = Schema.Struct({
+  type: Schema.Literals(["toggle", "down", "up"]),
+});
+export type DesktopDictationShortcutEvent = typeof DesktopDictationShortcutEvent.Type;
+
+export const DesktopDictationSessionConfig = Schema.Struct({
+  endpoint: Schema.String,
+  token: Schema.String,
+});
+export type DesktopDictationSessionConfig = typeof DesktopDictationSessionConfig.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getRelayTelemetryEnabled: () => boolean;
@@ -1038,6 +1049,8 @@ export interface DesktopBridge {
   getLocalEnvironmentBearerToken: () => Promise<string>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
+  getDictationSessionConfig: () => Promise<DesktopDictationSessionConfig>;
+  onDictationShortcut: (listener: (event: DesktopDictationShortcutEvent) => void) => () => void;
   getConnectionCatalog: () => Promise<string | null>;
   setConnectionCatalog: (catalog: string) => Promise<boolean>;
   discoverSshHosts: () => Promise<readonly DesktopDiscoveredSshHost[]>;

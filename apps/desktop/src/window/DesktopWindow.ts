@@ -8,7 +8,11 @@ import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
 
-import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import {
+  type DesktopDictationShortcutEvent,
+  type DesktopSnapShotEvent,
+  DEFAULT_CLIENT_SETTINGS,
+} from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -23,6 +27,7 @@ import {
   MENU_ACTION_CHANNEL,
   QUIT_SHORTCUT_CHANNEL,
   SNAP_SHOT_EVENT_CHANNEL,
+  DICTATION_SHORTCUT_CHANNEL,
   TRACKPAD_SCROLL_BEGIN_CHANNEL,
   TRACKPAD_SCROLL_END_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
@@ -108,6 +113,9 @@ export class DesktopWindow extends Context.Service<
     ) => Effect.Effect<void, DesktopWindowError>;
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
+    ) => Effect.Effect<void, DesktopWindowError>;
+    readonly dispatchDictationShortcut?: (
+      event: DesktopDictationShortcutEvent,
     ) => Effect.Effect<void, DesktopWindowError>;
     // Electron zoom roles target focused guests; zoomMain must always target the app.
     readonly zoomMain: (direction: MainWindowZoomDirection) => Effect.Effect<void>;
@@ -1018,6 +1026,11 @@ export const make = Effect.gen(function* () {
         reveal: event.type === "started",
       });
     }),
+    dispatchDictationShortcut: Effect.fn("desktop.window.dispatchDictationShortcut")(
+      function* (event) {
+        yield* dispatchRendererEvent(DICTATION_SHORTCUT_CHANNEL, event, { reveal: false });
+      },
+    ),
     zoomMain: Effect.fn("desktop.window.zoomMain")(function* (direction) {
       yield* Effect.annotateCurrentSpan({ direction });
       const window = yield* electronWindow.main;

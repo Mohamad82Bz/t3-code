@@ -357,6 +357,13 @@ export type ModelPreferences = {
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
 
+export const DictationActivationMode = Schema.Literals(["toggle", "hold"]);
+export type DictationActivationMode = typeof DictationActivationMode.Type;
+export const DictationLanguage = Schema.Literals(["English", "Persian", "Auto"]);
+export type DictationLanguage = typeof DictationLanguage.Type;
+export const DEFAULT_DICTATION_PATH = "C:\\Users\\Mohamad\\Apps\\QwenDictation";
+export const DEFAULT_DICTATION_SHORTCUT = "ctrl+shift+d";
+
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
@@ -534,6 +541,23 @@ export const ClientSettingsSchema = Schema.Struct({
   // Opt-in TeX typesetting in rendered Markdown. Off keeps math parsing and
   // KaTeX out of the render path entirely.
   mathRenderingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  dictationEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  dictationPath: TrimmedString.check(Schema.isMaxLength(260)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_DICTATION_PATH)),
+  ),
+  dictationShortcut: TrimmedString.check(Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_DICTATION_SHORTCUT)),
+  ),
+  dictationActivationMode: DictationActivationMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("toggle" as const)),
+  ),
+  dictationLiveMode: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  dictationLanguage: DictationLanguage.pipe(
+    Schema.withDecodingDefault(Effect.succeed("English" as const)),
+  ),
+  dictationContext: TrimmedString.check(Schema.isMaxLength(1000)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -1829,5 +1853,12 @@ export const ClientSettingsPatch = Schema.Struct({
   snapShotAnimations: Schema.optionalKey(Schema.Boolean),
   wordWrap: Schema.optionalKey(Schema.Boolean),
   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
+  dictationEnabled: Schema.optionalKey(Schema.Boolean),
+  dictationPath: Schema.optionalKey(TrimmedString.check(Schema.isMaxLength(260))),
+  dictationShortcut: Schema.optionalKey(TrimmedString.check(Schema.isMaxLength(64))),
+  dictationActivationMode: Schema.optionalKey(DictationActivationMode),
+  dictationLiveMode: Schema.optionalKey(Schema.Boolean),
+  dictationLanguage: Schema.optionalKey(DictationLanguage),
+  dictationContext: Schema.optionalKey(TrimmedString.check(Schema.isMaxLength(1000))),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

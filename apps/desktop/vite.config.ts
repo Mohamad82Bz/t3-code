@@ -78,6 +78,7 @@ export default defineConfig({
         "src/snapShot/GlobalShiftShortcutWorker.ts",
         "src/snapShot/RegionSnapShotWorker.ts",
         "src/snapShot/SnapShotAccessibilityWorker.ts",
+        "src/dictation/GlobalDictationShortcutWorker.ts",
       ],
       clean: false,
       deps: {

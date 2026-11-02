@@ -597,6 +597,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["queue steer running turn send default behavior composer"],
   },
   {
+    id: "dictation",
+    title: "Dictation",
+    to: "/settings/chat",
+    searchTerms: ["microphone voice speech qwen live streaming shortcut toggle hold vocabulary"],
+    desktopOnly: true,
+    windowsOnly: true,
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/maintenance",

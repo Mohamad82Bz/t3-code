@@ -291,6 +291,24 @@ describe("ClientSettings notifications", () => {
   });
 });
 
+describe("ClientSettings dictation", () => {
+  it("provides the personal Qwen defaults and validates patches", () => {
+    expect(decodeClientSettings({})).toMatchObject({
+      dictationEnabled: true,
+      dictationShortcut: "ctrl+shift+d",
+      dictationActivationMode: "toggle",
+      dictationLiveMode: true,
+      dictationLanguage: "English",
+      dictationContext: "",
+    });
+    expect(decodeClientSettingsPatch({ dictationActivationMode: "hold" })).toEqual({
+      dictationActivationMode: "hold",
+    });
+    expect(() => decodeClientSettingsPatch({ dictationContext: "x".repeat(1001) })).toThrow();
+    expect(() => decodeClientSettingsPatch({ dictationLanguage: "French" })).toThrow();
+  });
+});
+
 describe("ClientSettings quit confirmation", () => {
   it.each([
     [true, "hold"],
