@@ -720,6 +720,7 @@ export const CodexSettings = makeProviderSettingsSchema(
 export type CodexSettings = typeof CodexSettings.Type;
 
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
+const DEFAULT_CLAUDE_COMMENTARY_MODEL_INCLUDE_PREFIXES = "gpt";
 
 export const IDLE_COMPACTION_MODES = [
   { value: "onReturn", label: "When you return" },
@@ -817,6 +818,30 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    commentaryModelIncludePrefixes: TrimmedString.check(Schema.isMaxLength(512)).pipe(
+      Schema.withDecodingDefault(Effect.succeed(DEFAULT_CLAUDE_COMMENTARY_MODEL_INCLUDE_PREFIXES)),
+      Schema.annotateKey({
+        title: "Proxy commentary model prefixes",
+        description:
+          "Comma-separated model prefixes whose unsigned thinking blocks are shown as assistant text. Remove gpt or leave empty to keep them as thinking.",
+        providerSettingsForm: {
+          placeholder: "gpt, my-model",
+          clearWhenEmpty: "persist",
+        },
+      }),
+    ),
+    commentaryModelExcludePrefixes: TrimmedString.check(Schema.isMaxLength(512)).pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Proxy commentary model exclusions",
+        description:
+          "Comma-separated model prefixes that stay as thinking even when they match an included prefix.",
+        providerSettingsForm: {
+          placeholder: "gpt-private, gemini-preview",
+          clearWhenEmpty: "persist",
+        },
+      }),
+    ),
   },
   {
     order: [
@@ -825,6 +850,8 @@ export const ClaudeSettings = makeProviderSettingsSchema(
       "contextWindow",
       "autoCompactWindow",
       "idleCompaction",
+      "commentaryModelIncludePrefixes",
+      "commentaryModelExcludePrefixes",
       "launchArgs",
     ],
   },

@@ -110,6 +110,8 @@ const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings =>
   autoCompactWindow: "",
   contextWindow: "",
   idleCompaction: "default",
+  commentaryModelIncludePrefixes: "gpt",
+  commentaryModelExcludePrefixes: "",
   ...overrides,
 });
 

@@ -77,6 +77,8 @@ it("shows fork context capacity alongside upstream idle compaction", () => {
     "contextWindow",
     "autoCompactWindow",
     "idleCompaction",
+    "commentaryModelIncludePrefixes",
+    "commentaryModelExcludePrefixes",
     "launchArgs",
   ]);
 });
