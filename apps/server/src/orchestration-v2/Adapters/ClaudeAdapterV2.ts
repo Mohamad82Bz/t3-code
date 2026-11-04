@@ -2076,6 +2076,38 @@ function isClaudeCommentarySignature(signature: string | undefined): boolean {
   return signature === undefined || signature === "" || signature === "cpa:commentary:v1";
 }
 
+function parseClaudeModelPrefixes(value: string): ReadonlyArray<string> {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((prefix) => prefix.trim().toLowerCase())
+        .filter((prefix) => prefix.length > 0),
+    ),
+  ];
+}
+
+function isClaudeCommentaryModel(input: {
+  readonly model: string;
+  readonly includePrefixes: ReadonlyArray<string>;
+  readonly excludePrefixes: ReadonlyArray<string>;
+}): boolean {
+  const model = input.model.trim().toLowerCase();
+  return (
+    input.includePrefixes.some((prefix) => model.startsWith(prefix)) &&
+    !input.excludePrefixes.some((prefix) => model.startsWith(prefix))
+  );
+}
+
+function isClaudeCommentaryThinking(input: {
+  readonly model: string;
+  readonly signature: string | undefined;
+  readonly includePrefixes: ReadonlyArray<string>;
+  readonly excludePrefixes: ReadonlyArray<string>;
+}): boolean {
+  return isClaudeCommentaryModel(input) && isClaudeCommentarySignature(input.signature);
+}
+
 // In SDK mode, /goal appears only in transcripts: command output names it and Stop hooks report unmet checks.
 const CLAUDE_GOAL_SET_PREFIX = "Goal set: ";
 const CLAUDE_GOAL_ACTIVE = /^Goal active: ([\s\S]+?) \((?:not yet evaluated|(\d+) turns?)\)/u;
@@ -4914,6 +4946,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         compileClaudeModelSelection(modelSelection, modelCatalog).apiModelId,
       ) ??
       null);
+  const commentaryModelIncludePrefixes = parseClaudeModelPrefixes(
+    adapterOptions.settings.commentaryModelIncludePrefixes,
+  );
+  const commentaryModelExcludePrefixes = parseClaudeModelPrefixes(
+    adapterOptions.settings.commentaryModelExcludePrefixes,
+  );
   const continuationRequests = adapterOptions.continuationRequests ?? {
     offer: () => Effect.void,
   };
@@ -7646,7 +7684,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           );
           for (const [index, { block, text }] of thinking.entries()) {
             const nativeItemId = `${message.uuid}:thinking:${index}`;
-            if (isClaudeCommentarySignature(block.signature)) {
+            if (
+              isClaudeCommentaryThinking({
+                model: message.message.model,
+                signature: block.signature,
+                includePrefixes: commentaryModelIncludePrefixes,
+                excludePrefixes: commentaryModelExcludePrefixes,
+              })
+            ) {
               yield* emitSubagentConversationMessage({
                 nativeItemId,
                 threadId: target.childThreadId,
@@ -8020,7 +8065,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           for (const [itemId, block] of input.context.reasoning.blocks) {
             if (
               block.stopped &&
-              isClaudeCommentarySignature(block.signature) &&
+              isClaudeCommentaryThinking({
+                model: input.context.input.modelSelection.model,
+                signature: block.signature,
+                includePrefixes: commentaryModelIncludePrefixes,
+                excludePrefixes: commentaryModelExcludePrefixes,
+              }) &&
               block.text.trim()
             ) {
               yield* emitAssistantTextArtifacts({
@@ -9208,7 +9258,15 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ...(finalText ? { finalText } : {}),
                 emitEmpty: false,
               });
-              if (isClaudeCommentarySignature(block.signature) && completedText.trim()) {
+              if (
+                isClaudeCommentaryThinking({
+                  model: context.input.modelSelection.model,
+                  signature: block.signature,
+                  includePrefixes: commentaryModelIncludePrefixes,
+                  excludePrefixes: commentaryModelExcludePrefixes,
+                }) &&
+                completedText.trim()
+              ) {
                 yield* emitAssistantTextArtifacts({
                   context,
                   nativeItemId: itemId,

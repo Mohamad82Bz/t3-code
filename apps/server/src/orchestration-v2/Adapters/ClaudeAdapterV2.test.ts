@@ -130,7 +130,8 @@ beforeEach(() => {
   });
 });
 
-const DEFAULT_CLAUDE_SETTINGS = Schema.decodeSync(ClaudeSettings)({});
+const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
+const DEFAULT_CLAUDE_SETTINGS = decodeClaudeSettings({});
 const AUTO_COMPACT_CLAUDE_SETTINGS = Schema.decodeSync(ClaudeSettings)({
   autoCompactWindow: "300000",
 });
@@ -6378,11 +6379,47 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect.each(["completed", "interrupted"] as const)(
-    "projects proxy commentary without an assistant snapshot when %s",
-    (status) =>
-      Effect.gen(function* () {
-        const harness = yield* makeWakeHarness;
+  it.effect.each(
+    [
+      { model: "gpt-6-luna", commentary: true },
+      { model: "gpt-future-model", commentary: true },
+      { model: "gptnext", commentary: true },
+      { model: "gemini-future-model", commentary: false },
+      { model: "claude-future-model", commentary: false },
+      { model: "not-gpt-model", commentary: false },
+      {
+        model: "custom-future-model",
+        commentary: true,
+        commentaryModelIncludePrefixes: " other, \n custom- , ",
+      },
+      {
+        model: "gpt-private-model",
+        commentary: false,
+        commentaryModelExcludePrefixes: " other, \n gpt-private , ",
+      },
+      {
+        model: "gemini-future-model",
+        commentary: true,
+        commentaryModelIncludePrefixes: "gemini",
+      },
+      {
+        model: "gemini-future-model",
+        commentary: false,
+        commentaryModelIncludePrefixes: "gemini",
+        commentaryModelExcludePrefixes: "gemini-future",
+      },
+      { model: "gpt-6-luna", commentary: false, commentaryModelExcludePrefixes: "gpt" },
+    ].flatMap((scenario) =>
+      (["completed", "interrupted"] as const).map((status) => ({ ...scenario, status })),
+    ),
+  )(
+    "classifies proxy thinking for $model when $status (commentary: $commentary)",
+    ({ model, commentary, status, ...settings }) => {
+      const claudeSettings = decodeClaudeSettings(settings);
+      return Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({
+          settings: claudeSettings,
+        });
         yield* harness.runtime.startTurn(
           makeClaudeTestTurnInput({
             threadId: harness.threadId,
@@ -6391,7 +6428,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attemptId: RunAttemptId.make("commentary-thinking-attempt"),
             text: "Check the plan",
             attachments: [],
-            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "gpt-6-luna" },
+            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model },
           }),
         );
         const snapshot = (id: string, uuid: string, content: ReadonlyArray<unknown>) =>
@@ -6400,7 +6437,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             uuid,
             session_id: WAKE_NATIVE_SESSION,
             parent_tool_use_id: null,
-            message: { id, model: "gpt-6-luna", content },
+            message: { id, model, content },
           });
         const stream = (event: unknown) =>
           claudeSdkFrame({
@@ -6424,7 +6461,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           snapshot("signed-message", "signed-snapshot", [
             { type: "thinking", thinking: "The change needs a regression test.", signature: "sig" },
           ]),
-          stream({ type: "message_start", message: { id: "streamed-commentary" } }),
+          stream({ type: "message_start", message: { id: "streamed-commentary", model } }),
           stream({
             type: "content_block_start",
             index: 0,
@@ -6480,15 +6517,16 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               : [],
           ),
         );
+        const convertedType = commentary ? "assistant_message" : "reasoning";
         assert.deepEqual(
           [...latest.values()].map((item) => [item.type, item.text]),
           [
-            ["assistant_message", "Checking the files first."],
-            ["assistant_message", "I will make the requested edit."],
+            [convertedType, "Checking the files first."],
+            [convertedType, "I will make the requested edit."],
             ["reasoning", "The change needs a regression test."],
             ["reasoning", "Real reasoning."],
-            ["assistant_message", "Here is the update before steering."],
-            ["assistant_message", "Marked streamed update."],
+            [convertedType, "Here is the update before steering."],
+            [convertedType, "Marked streamed update."],
           ],
         );
         const messages = harness.events.flatMap((event) =>
@@ -6498,12 +6536,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         );
         assert.deepEqual(
           messages.map((message) => message.text),
-          [
-            "Checking the files first.",
-            "I will make the requested edit.",
-            "Here is the update before steering.",
-            "Marked streamed update.",
-          ],
+          commentary
+            ? [
+                "Checking the files first.",
+                "I will make the requested edit.",
+                "Here is the update before steering.",
+                "Marked streamed update.",
+              ]
+            : [],
         );
         assert.equal(new Set(messages.map((message) => message.id)).size, messages.length);
       }).pipe(
@@ -6511,7 +6551,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         Effect.provide(
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
-      ),
+      );
+    },
   );
 
   // regression: #15892 non-execution metadata is carried through, not guessed from result text
