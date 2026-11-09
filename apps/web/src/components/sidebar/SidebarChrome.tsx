@@ -6,6 +6,8 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { useThreadRouteTarget } from "../../hooks/useThreadRouteTarget";
+import { useComposerDraftStore } from "../../composerDraftStore";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
   navigateHistory,
@@ -15,7 +17,7 @@ import {
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { environmentPresentations } from "../../state/presentation";
 import { cn } from "../../lib/utils";
-import { usePullRequestsSupported } from "../../state/environments";
+import { usePrimaryEnvironmentId, usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   resolveEnvironmentIdentificationPillLabel,
@@ -37,7 +39,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
-import { formatCodexQuotaReplenishment, resolveCodexQuotaTotals } from "./codexQuotaTotals";
+import {
+  formatCodexQuotaReplenishment,
+  resolveEnvironmentCodexQuotaTotals,
+} from "./codexQuotaTotals";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -223,11 +228,19 @@ function SidebarUtilityItem({
 
 function SidebarCodexQuotaTotals() {
   const serverConfigs = useAtomValue(environmentPresentations.serverConfigsAtom);
-  const now = Date.parse(useNowMinute());
-  const totals = resolveCodexQuotaTotals(
-    [...serverConfigs.values()].flatMap((config) => config.usageLimitSources ?? []),
-    now,
+  const routeTarget = useThreadRouteTarget();
+  const draftEnvironmentId = useComposerDraftStore((store) =>
+    routeTarget?.kind === "draft"
+      ? (store.getDraftSession(routeTarget.draftId)?.environmentId ?? null)
+      : null,
   );
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const environmentId =
+    routeTarget?.kind === "server"
+      ? routeTarget.threadRef.environmentId
+      : (draftEnvironmentId ?? primaryEnvironmentId);
+  const now = Date.parse(useNowMinute());
+  const totals = resolveEnvironmentCodexQuotaTotals(serverConfigs, environmentId, now);
   if (totals === null) return null;
 
   const session = totals.session;
@@ -274,8 +287,9 @@ function SidebarCodexQuotaTotals() {
           </span>
         </TooltipTrigger>
         <TooltipPopup side="top">
-          5-hour / weekly Codex total remaining, including disabled accounts. The red count shows
-          accounts with exhausted weekly quota; replenishment uses the nearest account.
+          5-hour / weekly Codex total remaining for this environment, including disabled accounts.
+          The red count shows accounts with exhausted weekly quota; replenishment uses the nearest
+          account.
         </TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>

@@ -1,7 +1,15 @@
-import { ProviderDriverKind, type UsageLimitSourceSnapshot } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderDriverKind,
+  type UsageLimitSourceSnapshot,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatCodexQuotaReplenishment, resolveCodexQuotaTotals } from "./codexQuotaTotals";
+import {
+  formatCodexQuotaReplenishment,
+  resolveCodexQuotaTotals,
+  resolveEnvironmentCodexQuotaTotals,
+} from "./codexQuotaTotals";
 
 const NOW = Date.parse("2026-11-03T00:00:00.000Z");
 
@@ -52,6 +60,47 @@ function source(
 }
 
 describe("resolveCodexQuotaTotals", () => {
+  it("matches the current environment's cards without adding another environment's snapshots", () => {
+    const local = EnvironmentId.make("local");
+    const remote = EnvironmentId.make("remote");
+    const resets = {
+      session: "2026-11-03T02:00:00.000Z",
+      weekly: "2026-11-04T00:00:00.000Z",
+    };
+    const accounts = [
+      account("C1", 0, 100, resets, true),
+      account("C2", 100, 48, resets, true),
+      account("F", 1, 48, resets),
+      account("R", 0, 100, resets, true),
+      account("S", 11, 43, resets),
+      account("V", 0, 100, resets, true),
+      account("W", 0, 52, resets),
+    ];
+    const configs = new Map([
+      [local, { usageLimitSources: [source(accounts)] }],
+      [remote, { usageLimitSources: [source(accounts)] }],
+    ]);
+
+    const totals = resolveEnvironmentCodexQuotaTotals(configs, local, NOW);
+    expect(totals?.session?.remaining).toBe(288);
+    expect(totals?.weekly?.remaining).toBe(209);
+    expect(totals?.session?.weeklyExhaustedCount).toBe(3);
+    expect(resolveEnvironmentCodexQuotaTotals(configs, remote, NOW)).toEqual(totals);
+    expect(
+      resolveEnvironmentCodexQuotaTotals(configs, EnvironmentId.make("missing"), NOW),
+    ).toBeNull();
+    expect(resolveEnvironmentCodexQuotaTotals(configs, null, NOW)).toBeNull();
+    expect(
+      resolveEnvironmentCodexQuotaTotals(
+        new Map([
+          [local, { usageLimitSources: [] }],
+          [remote, configs.get(remote)!],
+        ]),
+        local,
+        NOW,
+      ),
+    ).toBeNull();
+  });
   it("sums Codex accounts and replenishment regardless of disabled status", () => {
     const result = resolveCodexQuotaTotals(
       [
