@@ -1,7 +1,7 @@
 import { ProviderDriverKind, type UsageLimitSourceSnapshot } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatCodexQuotaReplenishment, resolveCodexQuotaAverage } from "./codexQuotaAverage";
+import { formatCodexQuotaReplenishment, resolveCodexQuotaTotals } from "./codexQuotaTotals";
 
 const NOW = Date.parse("2026-11-03T00:00:00.000Z");
 
@@ -51,9 +51,9 @@ function source(
   };
 }
 
-describe("resolveCodexQuotaAverage", () => {
-  it("averages Codex accounts and replenishment regardless of disabled status", () => {
-    const result = resolveCodexQuotaAverage(
+describe("resolveCodexQuotaTotals", () => {
+  it("sums Codex accounts and replenishment regardless of disabled status", () => {
+    const result = resolveCodexQuotaTotals(
       [
         source([
           account("enabled-a", 20, 40, {
@@ -79,20 +79,20 @@ describe("resolveCodexQuotaAverage", () => {
       NOW,
     );
 
-    expect(result?.session?.remaining).toBe(57);
-    expect(result?.weekly?.remaining).toBe(53);
+    expect(result?.session?.remaining).toBe(170);
+    expect(result?.weekly?.remaining).toBe(160);
     expect(result?.session?.replenishment).toEqual({
-      percent: 16.7,
+      percent: 50,
       at: Date.parse("2026-11-03T01:00:00.000Z"),
     });
     expect(result?.weekly?.replenishment).toEqual({
-      percent: 6.7,
+      percent: 20,
       at: Date.parse("2026-11-03T01:00:00.000Z"),
     });
   });
 
-  it("retains weekly exhaustion suppression when all accounts are disabled", () => {
-    const result = resolveCodexQuotaAverage(
+  it("counts weekly-exhausted accounts when all accounts are disabled", () => {
+    const result = resolveCodexQuotaTotals(
       [
         source([
           account(
@@ -120,18 +120,37 @@ describe("resolveCodexQuotaAverage", () => {
       NOW,
     );
 
-    expect(result?.session?.remaining).toBe(50);
-    expect(result?.session?.suppressedPercent).toBe(30);
+    expect(result?.session?.remaining).toBe(100);
+    expect(result?.session?.weeklyExhaustedCount).toBe(1);
     expect(result?.session?.replenishment).toEqual({
-      percent: 30,
+      percent: 60,
       at: Date.parse("2026-11-04T00:00:00.000Z"),
     });
-    expect(result?.weekly?.remaining).toBe(50);
-    expect(result?.weekly?.suppressedPercent).toBe(0);
+    expect(result?.weekly?.remaining).toBe(100);
+    expect(result?.weekly?.weeklyExhaustedCount).toBe(0);
+  });
+
+  it("sums five full quota accounts to 500%", () => {
+    const result = resolveCodexQuotaTotals(
+      [
+        source(
+          ["one", "two", "three", "four", "five"].map((id) =>
+            account(id, 0, 0, {
+              session: "2026-11-04T00:00:00.000Z",
+              weekly: "2026-11-05T00:00:00.000Z",
+            }),
+          ),
+        ),
+      ],
+      NOW,
+    );
+
+    expect(result?.session?.remaining).toBe(500);
+    expect(result?.weekly?.remaining).toBe(500);
   });
 
   it("reports the nearest account replenishment", () => {
-    const result = resolveCodexQuotaAverage(
+    const result = resolveCodexQuotaTotals(
       [
         source([
           account("first", 50, 50, {
@@ -155,19 +174,17 @@ describe("resolveCodexQuotaAverage", () => {
       NOW,
     );
 
-    expect(result?.session?.remaining).toBe(63);
+    expect(result?.session?.remaining).toBe(250);
     expect(result?.session?.replenishment).toEqual({
-      percent: 12.5,
+      percent: 50,
       at: Date.parse("2026-11-03T00:21:00.000Z"),
     });
-    expect(result?.weekly?.remaining).toBe(75);
+    expect(result?.weekly?.remaining).toBe(300);
     expect(result?.weekly?.replenishment).toEqual({
-      percent: 12.5,
+      percent: 50,
       at: Date.parse("2026-11-03T00:21:00.000Z"),
     });
-    expect(formatCodexQuotaReplenishment(result!.session!.replenishment!, NOW)).toBe(
-      "+12.5% in 21m",
-    );
+    expect(formatCodexQuotaReplenishment(result!.session!.replenishment!, NOW)).toBe("+50% in 21m");
     expect(
       formatCodexQuotaReplenishment(
         { percent: 25, at: Date.parse("2026-11-06T02:00:00.000Z") },

@@ -37,7 +37,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
-import { resolveCodexQuotaAverage, formatCodexQuotaReplenishment } from "./codexQuotaAverage";
+import { formatCodexQuotaReplenishment, resolveCodexQuotaTotals } from "./codexQuotaTotals";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -221,20 +221,20 @@ function SidebarUtilityItem({
   );
 }
 
-function SidebarCodexQuotaAverage() {
+function SidebarCodexQuotaTotals() {
   const serverConfigs = useAtomValue(environmentPresentations.serverConfigsAtom);
   const now = Date.parse(useNowMinute());
-  const average = resolveCodexQuotaAverage(
+  const totals = resolveCodexQuotaTotals(
     [...serverConfigs.values()].flatMap((config) => config.usageLimitSources ?? []),
     now,
   );
-  if (average === null) return null;
+  if (totals === null) return null;
 
-  const session = average.session;
-  const weekly = average.weekly;
+  const session = totals.session;
+  const weekly = totals.weekly;
   const sessionLabel = session === null ? "unavailable" : `${session.remaining}%`;
   const weeklyLabel = weekly === null ? "unavailable" : `${weekly.remaining}%`;
-  const description = `Codex average remaining: ${sessionLabel} for 5-hour and ${weeklyLabel} for weekly quotas.${session?.suppressedPercent ? ` ${session.suppressedPercent}% is suppressed because weekly quota is exhausted.` : ""}`;
+  const description = `Codex total remaining: ${sessionLabel} for 5-hour and ${weeklyLabel} for weekly quotas.${session?.weeklyExhaustedCount ? ` ${session.weeklyExhaustedCount} account${session.weeklyExhaustedCount === 1 ? "" : "s"} has exhausted weekly quota.` : ""}`;
 
   return (
     <SidebarMenuItem className="min-w-0 flex-1">
@@ -251,8 +251,8 @@ function SidebarCodexQuotaAverage() {
           <span className="flex min-w-0 flex-1 flex-col items-center leading-none">
             <span className="flex items-baseline gap-0.5">
               <span>{sessionLabel}</span>
-              {session?.suppressedPercent ? (
-                <span className="text-5xs text-destructive">-{session.suppressedPercent}%</span>
+              {session?.weeklyExhaustedCount ? (
+                <span className="text-5xs text-destructive">-{session.weeklyExhaustedCount}</span>
               ) : null}
             </span>
             <span className="mt-0.5 min-h-3 whitespace-nowrap text-5xs text-sidebar-muted-foreground/70">
@@ -274,8 +274,8 @@ function SidebarCodexQuotaAverage() {
           </span>
         </TooltipTrigger>
         <TooltipPopup side="top">
-          5-hour / weekly Codex average remaining, including disabled accounts. Replenishment uses
-          the nearest account.
+          5-hour / weekly Codex total remaining, including disabled accounts. The red count shows
+          accounts with exhausted weekly quota; replenishment uses the nearest account.
         </TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>
@@ -349,7 +349,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
         </>
       )}
-      <SidebarCodexQuotaAverage />
+      <SidebarCodexQuotaTotals />
       <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>
