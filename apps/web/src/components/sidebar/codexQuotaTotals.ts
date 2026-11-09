@@ -1,4 +1,4 @@
-import type { UsageLimitSourceSnapshot } from "@t3tools/contracts";
+import type { EnvironmentId, UsageLimitSourceSnapshot } from "@t3tools/contracts";
 import { remainingPercent } from "@t3tools/shared/usageLimits";
 
 export interface CodexQuotaReplenishment {
@@ -15,6 +15,18 @@ export interface CodexQuotaTotalWindow {
 export interface CodexQuotaTotals {
   readonly session: CodexQuotaTotalWindow | null;
   readonly weekly: CodexQuotaTotalWindow | null;
+}
+
+export function resolveEnvironmentCodexQuotaTotals(
+  configs: ReadonlyMap<
+    EnvironmentId,
+    { readonly usageLimitSources?: readonly UsageLimitSourceSnapshot[] | undefined }
+  >,
+  environmentId: EnvironmentId | null,
+  now: number,
+): CodexQuotaTotals | null {
+  if (environmentId === null) return null;
+  return resolveCodexQuotaTotals(configs.get(environmentId)?.usageLimitSources ?? [], now);
 }
 
 export function resolveCodexQuotaTotals(
