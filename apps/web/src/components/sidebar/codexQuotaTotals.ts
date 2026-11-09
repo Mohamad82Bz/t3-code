@@ -6,27 +6,27 @@ export interface CodexQuotaReplenishment {
   readonly at: number;
 }
 
-export interface CodexQuotaAverageWindow {
+export interface CodexQuotaTotalWindow {
   readonly remaining: number;
   readonly replenishment: CodexQuotaReplenishment | null;
-  readonly suppressedPercent: number;
+  readonly weeklyExhaustedCount: number;
 }
 
-export interface CodexQuotaAverage {
-  readonly session: CodexQuotaAverageWindow | null;
-  readonly weekly: CodexQuotaAverageWindow | null;
+export interface CodexQuotaTotals {
+  readonly session: CodexQuotaTotalWindow | null;
+  readonly weekly: CodexQuotaTotalWindow | null;
 }
 
-export function resolveCodexQuotaAverage(
+export function resolveCodexQuotaTotals(
   sources: readonly UsageLimitSourceSnapshot[],
   now: number,
-): CodexQuotaAverage | null {
+): CodexQuotaTotals | null {
   const accounts = sources.flatMap((source) =>
     source.accounts.filter((account) => account.driver === "codex" && account.identifier),
   );
   if (accounts.length === 0) return null;
 
-  const average = (kind: "session" | "weekly"): CodexQuotaAverageWindow | null => {
+  const total = (kind: "session" | "weekly"): CodexQuotaTotalWindow | null => {
     const values = accounts.flatMap((account) => {
       const window = account.usageLimits.windows.find((candidate) => candidate.kind === kind);
       const weekly =
@@ -40,6 +40,7 @@ export function resolveCodexQuotaAverage(
         {
           remaining: kind === "session" && weeklyExhausted ? 0 : rawRemaining,
           rawRemaining,
+          weeklyExhausted,
           restoresPercent:
             kind === "session" && weeklyExhausted ? rawRemaining : 100 - rawRemaining,
           resetsAt: kind === "session" && weeklyExhausted ? weekly?.resetsAt : window?.resetsAt,
@@ -48,31 +49,22 @@ export function resolveCodexQuotaAverage(
     });
     if (values.length === 0) return null;
 
-    const remaining = Math.round(
-      values.reduce((sum, value) => sum + value.remaining, 0) / values.length,
-    );
-    const suppressedPercent =
-      kind === "session"
-        ? Math.round(
-            values.reduce((sum, value) => sum + (value.rawRemaining - value.remaining), 0) /
-              values.length,
-          )
-        : 0;
+    const remaining = values.reduce((sum, value) => sum + value.remaining, 0);
+    const weeklyExhaustedCount =
+      kind === "session" ? values.filter((value) => value.weeklyExhausted).length : 0;
     const replenishment =
       values
         .flatMap((value) => {
-          if (value.resetsAt === undefined || value.remaining >= 100) return [];
+          if (value.resetsAt === undefined || value.restoresPercent <= 0) return [];
           const at = Date.parse(value.resetsAt);
-          return Number.isFinite(at) && at > now
-            ? [{ percent: Math.round((value.restoresPercent / values.length) * 10) / 10, at }]
-            : [];
+          return Number.isFinite(at) && at > now ? [{ percent: value.restoresPercent, at }] : [];
         })
         .sort((left, right) => left.at - right.at)[0] ?? null;
 
-    return { remaining, replenishment, suppressedPercent };
+    return { remaining, replenishment, weeklyExhaustedCount };
   };
 
-  const result = { session: average("session"), weekly: average("weekly") };
+  const result = { session: total("session"), weekly: total("weekly") };
   return result.session === null && result.weekly === null ? null : result;
 }
 
