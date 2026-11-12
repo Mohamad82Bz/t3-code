@@ -29,6 +29,7 @@ import {
 } from "./ComposerModelEffort";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
+import { SessionCostIndicator } from "./SessionCostIndicator";
 
 /**
  * The composer footer controls: the model picker (which also holds effort, speed and
@@ -71,6 +72,7 @@ export function ComposerControlsBar(props: {
   onOpenProviderSetup: ChatComposerProps["onOpenProviderSetup"];
   providerCatalogPending: boolean;
   isSendBusy: boolean;
+  sessionRunning: boolean;
   multipleModelsEnabled: boolean;
   multipleModelSelections: ChatComposerProps["multipleModelSelections"];
   onMultipleModelSelectionsChange: ChatComposerProps["onMultipleModelSelectionsChange"];
@@ -266,6 +268,17 @@ export function ComposerControlsBar(props: {
     </ComposerControl>
   ) : (
     <>
+      {routeKind === "server" ? (
+        <SessionCostIndicator threadRef={routeThreadRef} running={props.sessionRunning} />
+      ) : (
+        <span
+          data-session-cost
+          className="shrink-0 px-1 text-xs text-muted-foreground tabular-nums"
+          aria-label="Estimated session cost: 0$"
+        >
+          0$
+        </span>
+      )}
       {composerModelPicker}
 
       <>

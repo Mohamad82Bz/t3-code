@@ -1298,6 +1298,15 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
     }),
+    sessionCost: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:session-cost",
+      tag: WS_METHODS.serverGetSessionCost,
+      staleTimeMs: 1_000,
+      refreshIntervalMs: 1_000,
+      idleTtlMs: 0,
+      isFinal: (cost) => !cost.running && cost.status !== "calculating",
+      refreshTrigger: ({ environmentId }) => usageScanSettingsAtom(environmentId),
+    }),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan.
     usageSummary: createEnvironmentRpcQueryAtomFamily(runtime, {

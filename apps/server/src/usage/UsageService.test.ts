@@ -17,6 +17,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   UsageDay,
+  UsageLimitSourceId,
   type UsageSource,
   type UsageSummary,
   type UsageSummaryInput,
@@ -468,6 +469,145 @@ describe("Codex usage history", () => {
 });
 
 describe("UsageService", () => {
+  it.effect(
+    "prices only the requested session, deduplicates blocks, and refreshes appended usage",
+    () =>
+      Effect.gen(function* () {
+        const { home, transcript, settings } = yield* setup;
+        const sessionPath = NodePath.join(NodePath.dirname(transcript), "session-1.jsonl");
+        yield* Effect.promise(async () => {
+          await NodeFSP.writeFile(sessionPath, claudeLine(1, 5) + claudeLine(1, 5));
+          await NodeFSP.writeFile(transcript, claudeLine(2, 999));
+        });
+        yield* Effect.gen(function* () {
+          const service = yield* UsageService.make;
+          const input = {
+            sessions: [
+              {
+                provider: "claude" as const,
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                sessionId: "session-1",
+              },
+            ],
+            running: true,
+          };
+          const first = yield* service.readSessionCost(input);
+          assert.strictEqual(first.status, "ready");
+          assert.strictEqual(first.records, 1);
+          assert.approximately(first.costUsd!, 0.00002, 1e-12);
+          yield* Effect.promise(() => NodeFSP.appendFile(sessionPath, claudeLine(3, 10)));
+          const next = yield* service.readSessionCost(input);
+          assert.strictEqual(next.records, 2);
+          assert.approximately(next.costUsd!, 0.00005, 1e-12);
+          yield* Effect.promise(() =>
+            NodeFSP.appendFile(sessionPath, claudeLine(4, 10, "unknown-model")),
+          );
+          const unpriced = yield* service.readSessionCost(input);
+          assert.strictEqual(unpriced.status, "failed");
+          assert.strictEqual(unpriced.costUsd, null);
+          assert.deepStrictEqual(unpriced.unpricedModels, ["unknown-model"]);
+          const missing = { ...input, sessions: [{ ...input.sessions[0]!, sessionId: "missing" }] };
+          assert.strictEqual((yield* service.readSessionCost(missing)).status, "calculating");
+          assert.strictEqual(
+            (yield* service.readSessionCost({ ...missing, running: false })).status,
+            "failed",
+          );
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            layerService({
+              prefix: "session-cost",
+              home,
+              settings,
+              ratesDocument: {
+                "claude-fable-5": {
+                  input_cost_per_token: 0.000001,
+                  output_cost_per_token: 0.000002,
+                },
+              },
+            }),
+          ),
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "uses CPA prices for native model IDs and lets explicit environment prices override them",
+    () =>
+      Effect.gen(function* () {
+        const { home, transcript, settings } = yield* setup;
+        yield* Effect.promise(() =>
+          NodeFSP.writeFile(
+            NodePath.join(NodePath.dirname(transcript), "session-1.jsonl"),
+            claudeLine(1, 5, "proxy-model"),
+          ),
+        );
+        const input = {
+          sessions: [
+            {
+              provider: "claude" as const,
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              sessionId: "session-1",
+            },
+          ],
+          running: false,
+        };
+        for (const override of [false, true]) {
+          yield* Effect.gen(function* () {
+            const service = yield* UsageService.make;
+            const cost = yield* service.readSessionCost(input);
+            assert.strictEqual(cost.status, "ready");
+            assert.approximately(cost.costUsd!, override ? 0.00004 : 0.00007, 1e-12);
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(
+              layerService({
+                prefix: `session-cpa-${override}`,
+                home,
+                settings: {
+                  ...settings,
+                  usageLimitSources: {
+                    [UsageLimitSourceId.make("test")]: {
+                      kind: "cliproxy",
+                      url: "https://hub.example",
+                      managementKey: "test-key",
+                      enabled: true,
+                    },
+                  },
+                  ...(override
+                    ? {
+                        usagePriceOverrides: {
+                          "proxy-model": {
+                            inputCostPerMillionTokens: 2,
+                            outputCostPerMillionTokens: 4,
+                          },
+                        },
+                      }
+                    : {}),
+                },
+                ratesResponse: (request) => {
+                  assert.strictEqual(request.url, "https://hub.example/v0/management/model-prices");
+                  assert.strictEqual(request.headers.authorization, "Bearer test-key");
+                  return Effect.succeed(
+                    Response.json({
+                      prices: {
+                        "proxy-model": {
+                          prompt: 3,
+                          completion: 8,
+                          promptConfigured: true,
+                          completionConfigured: true,
+                        },
+                      },
+                    }),
+                  );
+                },
+              }),
+            ),
+          );
+        }
+      }).pipe(Effect.scoped),
+  );
+
   it.live("counts compressed Codex rollouts across refresh, rewrites, and cache restarts", () =>
     Effect.gen(function* () {
       const { home, settings } = yield* setup;

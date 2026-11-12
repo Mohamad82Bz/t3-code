@@ -8,6 +8,7 @@ import {
   type UsagePricing,
   type UsageSummary,
   type UsageSummaryInput,
+  type SessionCost,
   UsageReadError,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -40,7 +41,13 @@ import type {
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
-import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+import {
+  createOverrideRateTable,
+  parseRateTable,
+  priceUsage,
+  type RateTable,
+} from "./usagePricing.ts";
+import { decodeCpaPrices, priceCpaUsage, type CpaPrices } from "./cpaPricing.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -139,11 +146,23 @@ const decodeCachedSources = Schema.decodeUnknownOption(
   Schema.Struct({ sources: Schema.Record(Schema.String, CachedSource) }),
 );
 
+export interface SessionUsageInput {
+  readonly sessions: readonly {
+    readonly provider: UsageProviderKind;
+    readonly instanceId: ProviderInstanceId;
+    readonly sessionId: string;
+  }[];
+  readonly running: boolean;
+}
+
 export class UsageService extends Context.Service<
   UsageService,
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    readonly readSessionCost: (
+      input: SessionUsageInput,
+    ) => Effect.Effect<SessionCost, UsageReadError>;
   }
 >()("t3/usage/UsageService") {}
 
@@ -927,7 +946,196 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  const sessionReadLock = yield* Semaphore.make(1);
+  const sessionPaths = new Map<
+    string,
+    { readonly checkedAt: number; readonly paths: readonly string[] }
+  >();
+  let hubPrices:
+    | { readonly key: string; readonly checkedAt: number; readonly prices: CpaPrices }
+    | undefined;
+
+  const readHubPrices = Effect.fn("UsageService.readHubPrices")(function* (
+    settings: ServerSettingsValue,
+  ) {
+    const hubs = Object.values(settings.usageLimitSources).filter(
+      (hub) => hub.enabled && hub.managementKey.length > 0,
+    );
+    const key = encodeUsageRecordKey(hubs);
+    const now = yield* Clock.currentTimeMillis;
+    if (hubPrices?.key === key && now - hubPrices.checkedAt < 60_000) return hubPrices.prices;
+    const results = yield* Effect.forEach(
+      hubs,
+      (hub) =>
+        Effect.try(() =>
+          new URL(
+            "v0/management/model-prices",
+            hub.url.endsWith("/") ? hub.url : `${hub.url}/`,
+          ).toString(),
+        ).pipe(
+          Effect.flatMap((url) =>
+            httpClient.get(url, { headers: { Authorization: `Bearer ${hub.managementKey}` } }),
+          ),
+          Effect.flatMap(HttpClientResponse.filterStatusOk),
+          Effect.flatMap((response) => response.json),
+          Effect.flatMap(decodeCpaPrices),
+          Effect.map((response) => response.prices),
+          Effect.timeout("5 seconds"),
+          Effect.orElseSucceed((): CpaPrices => ({})),
+        ),
+      { concurrency: 4 },
+    );
+    const prices: Record<string, CpaPrices[string]> = {};
+    const conflicts = new Set<string>();
+    for (const result of results)
+      for (const [model, price] of Object.entries(result)) {
+        if (
+          prices[model] !== undefined &&
+          encodeUsageRecordKey(prices[model]) !== encodeUsageRecordKey(price)
+        )
+          conflicts.add(model);
+        prices[model] = price;
+      }
+    for (const model of conflicts) delete prices[model];
+    hubPrices = { key, checkedAt: now, prices };
+    return prices;
+  });
+
+  const readSessionCost = Effect.fn("UsageService.readSessionCost")(function* (
+    input: SessionUsageInput,
+  ) {
+    const settings = yield* readSettings;
+    const now = yield* Clock.currentTimeMillis;
+    const records: UsageRecord[] = [];
+    let missing = false;
+    let failed = false;
+    for (const { provider, instanceId, sessionId } of input.sessions) {
+      const source = transcriptReaders.find(({ reader }) => reader.provider === provider);
+      if (source === undefined) {
+        failed = true;
+        continue;
+      }
+      const instance = (yield* usageInstances(source.driver, settings)).find(
+        (entry) => entry.instanceId === instanceId,
+      );
+      if (instance === undefined) {
+        failed = true;
+        continue;
+      }
+      const directories = yield* source.reader
+        .directories(instance)
+        .pipe(Effect.provideContext(readerContext));
+      let found = false;
+      for (const { dir } of directories) {
+        const key = encodeUsageRecordKey([provider, dir, sessionId]);
+        let cachedPaths = sessionPaths.get(key);
+        if (
+          cachedPaths === undefined ||
+          now - cachedPaths.checkedAt >= (cachedPaths.paths.length === 0 ? 1_000 : 5_000)
+        ) {
+          const listed = yield* Effect.promise(() =>
+            listTranscriptFiles(dir, 0, { sessionIds: new Set([sessionId]) }),
+          );
+          cachedPaths = { checkedAt: now, paths: listed.files.map((file) => file.path) };
+          sessionPaths.delete(key);
+          sessionPaths.set(key, cachedPaths);
+          if (sessionPaths.size > 100) sessionPaths.delete(sessionPaths.keys().next().value!);
+        }
+        for (const filePath of cachedPaths.paths) {
+          const info = yield* fileSystem.stat(filePath).pipe(Effect.option);
+          if (Option.isNone(info)) {
+            failed = true;
+            continue;
+          }
+          found = true;
+          const read = yield* readFileRecords(
+            filePath,
+            Number(info.value.size),
+            Option.getOrUndefined(info.value.mtime)?.getTime() ?? 0,
+            provider,
+            source.reader.format,
+          );
+          if (read.failed || read.malformedRecords > 0) failed = true;
+          if (read.update !== undefined) fileCache.set(filePath, read.update.entry);
+          const isChild = path.relative(dir, filePath).split(path.sep).includes(sessionId);
+          records.push(
+            ...read.records.filter((record) => record.sessionId === sessionId || isChild),
+          );
+        }
+      }
+      if (!found) missing = true;
+    }
+    const cpaPrices = records.length === 0 ? {} : yield* readHubPrices(settings);
+    const overrides = createOverrideRateTable(settings.usagePriceOverrides);
+    const aliases = resolveModelAliases(settings.usageModelAliases);
+    if (
+      records.some((record) => {
+        const model = aliases.get(record.model) ?? record.model;
+        return (
+          !overrides.has(model) && cpaPrices[model] === undefined && record.reportedCostUsd === null
+        );
+      })
+    )
+      yield* ensureRates(false);
+    const seen = new Set<string>();
+    const unpriced = new Set<string>();
+    let costUsd = 0;
+    let count = 0;
+    let usesCpa = false;
+    for (const rawRecord of records) {
+      const record = correctedRecord(rawRecord);
+      const key =
+        record.dedupeKey === null
+          ? encodeUsageRecordKey([
+              record.provider,
+              record.sessionId,
+              record.timestampMs,
+              record.model,
+              record.totals,
+            ])
+          : `${record.provider}:${record.dedupeKey}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      count += 1;
+      const model = aliases.get(record.model) ?? record.model;
+      const pricedRecord = { ...record, model };
+      const cpa = cpaPrices[model];
+      if (cpa !== undefined && !overrides.has(model)) {
+        usesCpa = true;
+        const cost = priceCpaUsage(cpa, pricedRecord);
+        if (cost === null) unpriced.add(model);
+        else costUsd += cost;
+      } else {
+        const priced = priceUsage(rates, pricedRecord, overrides);
+        if (priced.costSource === "unpriced") unpriced.add(model);
+        else costUsd += priced.costUsd;
+      }
+    }
+    const status =
+      failed || unpriced.size > 0 || (missing && !input.running)
+        ? "failed"
+        : missing || (count === 0 && input.running)
+          ? "calculating"
+          : "ready";
+    return {
+      status,
+      costUsd: status === "ready" ? costUsd : null,
+      running: input.running,
+      records: count,
+      unpricedModels: [...unpriced].sort(),
+      message: failed
+        ? "Session usage could not be read completely."
+        : unpriced.size > 0
+          ? "Some models have no complete price. Set their prices in CPA Manager or Usage → Model prices."
+          : missing
+            ? "Waiting for the provider's session transcript."
+            : usesCpa
+              ? "Estimated session cost using CPA Manager prices and recorded request usage."
+              : "Estimated API-equivalent session cost using recorded usage and model prices.",
+    } satisfies SessionCost;
+  }, sessionReadLock.withPermit);
+
+  return { readSummary, refreshRates, readSessionCost, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);
