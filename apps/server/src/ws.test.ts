@@ -98,6 +98,7 @@ import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as ThreadPresence from "./orchestration-v2/ThreadPresence.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as UsageService from "./usage/UsageService.ts";
+import * as SessionCostService from "./usage/SessionCostService.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
@@ -549,6 +550,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ThreadSearch.ThreadSearch)({}),
   Layer.mock(ThreadPresence.ThreadPresence)({}),
   Layer.mock(UsageService.UsageService)({}),
+  Layer.mock(SessionCostService.SessionCostService)({}),
   Layer.mock(VcsProvisioningService.VcsProvisioningService)({}),
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),

@@ -70,7 +70,7 @@ function fnv1a(buffer: Buffer): number {
 export async function listTranscriptFiles(
   root: string,
   sinceMs: number,
-  options?: { readonly fileName?: string },
+  options?: { readonly fileName?: string; readonly sessionIds?: ReadonlySet<string> },
 ): Promise<{ readonly files: readonly TranscriptFile[]; readonly failedPaths: number }> {
   const fileName = options?.fileName;
   const candidates: string[] = [];
@@ -91,7 +91,14 @@ export async function listTranscriptFiles(
           ? entry.name === fileName
           : entry.name.endsWith(".jsonl") || entry.name.endsWith(".jsonl.zst")
       ) {
-        candidates.push(child);
+        const sessionIds = options?.sessionIds;
+        const parts = NodePath.relative(root, child).split(NodePath.sep);
+        const stem = entry.name.replace(/\.jsonl(?:\.zst)?$/, "");
+        if (
+          sessionIds === undefined ||
+          [...sessionIds].some((id) => parts.includes(id) || stem === id || stem.endsWith(`-${id}`))
+        )
+          candidates.push(child);
       }
     }
   };

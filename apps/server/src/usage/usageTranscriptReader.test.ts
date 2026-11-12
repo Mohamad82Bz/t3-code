@@ -97,6 +97,22 @@ describe("compressed transcripts", () => {
     );
     assert.strictEqual(listed.failedPaths, 0);
     assert.isAbove(listed.files.find((file) => file.path === compressed)?.size ?? 0, 0);
+    assert.deepStrictEqual(
+      (await listTranscriptFiles(dir, 0, { sessionIds: new Set(["active"]) })).files.map(
+        (file) => file.path,
+      ),
+      [plain],
+    );
+    assert.deepStrictEqual(
+      (await listTranscriptFiles(dir, 0, { sessionIds: new Set(["nested"]) })).files
+        .map((file) => file.path)
+        .sort(),
+      [compressed, old].sort(),
+    );
+    assert.deepStrictEqual(
+      (await listTranscriptFiles(dir, 0, { sessionIds: new Set(["act"]) })).files,
+      [],
+    );
   });
 
   it.each([

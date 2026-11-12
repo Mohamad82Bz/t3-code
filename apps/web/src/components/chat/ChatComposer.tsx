@@ -2334,6 +2334,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onOpenProviderSetup={onOpenProviderSetup}
       providerCatalogPending={providerCatalogPending}
       isSendBusy={isSendBusy}
+      sessionRunning={phase === "running" || phase === "connecting"}
       multipleModelsEnabled={routeKind === "draft" && supportsMultipleModels}
       multipleModelSelections={multipleModelSelections}
       onMultipleModelSelectionsChange={setMultipleModelSelections}

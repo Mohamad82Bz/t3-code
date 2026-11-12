@@ -58,6 +58,20 @@ saved totals first, then updates them when Cursor's API responds.
 If recent work is missing or a new model shows no cost, refresh to rescan session history and
 update model pricing.
 
+## Estimated session cost
+
+On web and desktop, the composer shows the current thread's estimated cost beside the model picker.
+It updates in the background about once a second while the thread runs, as the provider saves request usage.
+It includes recorded native child sessions and keeps the total across turns and model switches.
+“Calculating” means usage is not ready; “Failed” means usage or a complete model price is unavailable.
+Hover the value for details and any missing model IDs.
+
+The estimate uses prices saved under **Usage → Model prices** first, then matching model prices
+from connected CPA Manager hubs, then public model rates or provider-reported costs. Cache reads,
+cache writes, and output are priced separately; reasoning tokens are not charged twice.
+This is an API-equivalent estimate, not a subscription invoice. Providers without attributable
+session transcripts cannot report a session cost.
+
 ## Set custom model prices
 
 On web or desktop, open the environment dropdown on **Usage**, then choose **Model prices** to add,

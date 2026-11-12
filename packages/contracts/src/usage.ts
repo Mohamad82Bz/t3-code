@@ -133,6 +133,16 @@ export const UsageSummary = Schema.Struct({
 });
 export type UsageSummary = typeof UsageSummary.Type;
 
+export const SessionCost = Schema.Struct({
+  status: Schema.Literals(["ready", "calculating", "failed"]),
+  costUsd: Schema.NullOr(Schema.Number),
+  running: Schema.Boolean,
+  records: NonNegativeInt,
+  unpricedModels: Schema.Array(Schema.String),
+  message: Schema.String,
+});
+export type SessionCost = typeof SessionCost.Type;
+
 export class UsageReadError extends Schema.TaggedError<UsageReadError>()("UsageReadError", {
   reason: Schema.Literals(["scanFailed", "invalidWindow"]),
   detail: TrimmedNonEmptyString,
