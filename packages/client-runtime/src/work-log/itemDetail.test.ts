@@ -2,7 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { isJsonToolText, readToolFile, turnItemOutputImages, turnItemOutputText } from "./itemDetail.ts";
+import {
+  isJsonToolText,
+  readToolFile,
+  turnItemOutputImages,
+  turnItemOutputText,
+} from "./itemDetail.ts";
 
 describe("isJsonToolText", () => {
   it.each([

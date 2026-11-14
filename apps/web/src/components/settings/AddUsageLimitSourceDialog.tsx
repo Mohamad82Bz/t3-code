@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
-import { SecretInput } from "../ui/secret-input";
+import { SecretInput } from "./SecretInput";
 import { sourceIdFromUrl } from "./AddUsageLimitSourceDialog.logic";
 import { SecretSourceInput, useSecretSources } from "./SecretSourceInput";
 import { Label } from "../ui/label";
@@ -46,7 +46,9 @@ export function AddUsageLimitSourceDialog({
   const [inferenceUrl, setInferenceUrl] = useState(source?.config.inferenceUrl ?? "");
   const [inferenceKey, setInferenceKey] = useState(source?.config.inferenceKey ?? "");
   const secretSources = useSecretSources(environmentId);
-  const [keyDraft, setKeyDraft] = useState<string | SecretReference>(source?.config.managementKey ?? "");
+  const [keyDraft, setKeyDraft] = useState<string | SecretReference>(
+    source?.config.managementKey ?? "",
+  );
   const [keyValid, setKeyValid] = useState(true);
   const managementKey = typeof keyDraft === "string" ? keyDraft.trim() : keyDraft;
   const trimmedUrl = url.trim();

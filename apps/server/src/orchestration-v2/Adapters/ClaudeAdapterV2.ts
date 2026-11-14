@@ -12006,6 +12006,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           providerSessionId: input.providerSessionId,
           providerSession: session,
           getModelContextWindow: (selection) => claudeContextWindow(selection) ?? undefined,
+          getAutoCompactThreshold: () =>
+            Number(adapterOptions.settings.autoCompactWindow) || undefined,
           events: Stream.fromEffectRepeat(Queue.take(events)),
           backgroundTasksEndWithProcess: true,
           hasPendingBackgroundWork: Effect.gen(function* () {

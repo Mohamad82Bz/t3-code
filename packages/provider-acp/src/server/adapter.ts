@@ -1134,6 +1134,7 @@ export function acpToolCallDiffPatch(content: unknown): string | undefined {
     const diff = unknownRecord(entry);
     return diff?.type === "diff" ? [diff] : [];
   });
+  let exceededDiffBudget = false;
   const patches = diffs.flatMap((diff): ReadonlyArray<{ text: string; path?: string }> => {
     const patch = unknownRecord(diff.patch);
     if (typeof patch?.text === "string") {
@@ -1172,13 +1173,14 @@ export function acpToolCallDiffPatch(content: unknown): string | undefined {
         maxEditLength: oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
       },
     );
+    if (structured === undefined) exceededDiffBudget = true;
     return structured === undefined || structured.hunks.length === 0
       ? []
       : [{ text: formatPatch(structured, FILE_HEADERS_ONLY), path: diff.path }];
   });
   // Diff parsers split at Git headers once one exists, so every section then needs its own.
   const hasGitHeader = patches.some(({ text }) => /^diff --git /m.test(text));
-  return patches.length === 0
+  return exceededDiffBudget || patches.length === 0
     ? undefined
     : patches
         .map(({ text, path }) =>

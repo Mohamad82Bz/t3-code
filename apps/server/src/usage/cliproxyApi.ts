@@ -635,7 +635,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     const operation = Effect.gen(function* () {
       const files = yield* authFiles(config);
       const findTarget = Effect.fn("CliproxyApi.findTarget")(function* (
-        entries: readonly (typeof AuthFile.Type)[],
+        entries: readonly AuthFile[],
       ) {
         const matches = entries.filter((entry) => entry.auth_index === input.authIndex);
         const file = matches[0];
@@ -656,9 +656,9 @@ export const makeCliproxyApi = Effect.gen(function* () {
         return file;
       });
       const file = yield* findTarget(files);
-      const accountId = (entry: typeof AuthFile.Type) =>
+      const accountId = (entry: AuthFile) =>
         entry.id_token?.chatgpt_account_id ?? entry.chatgpt_account_id ?? entry.account_id ?? "";
-      const snapshot = (entry: typeof AuthFile.Type) => entry.account || entry.email || "";
+      const snapshot = (entry: AuthFile) => entry.account || entry.email || "";
       const currentTarget = Effect.gen(function* () {
         const current = yield* findTarget(yield* authFiles(config));
         if (
@@ -709,7 +709,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
         };
       }
 
-      const document = Effect.fn("CliproxyApi.document")(function* (entry: typeof AuthFile.Type) {
+      const document = Effect.fn("CliproxyApi.document")(function* (entry: AuthFile) {
         if (!entry.name)
           return yield* new UsageLimitSourceError({
             detail: "A Codex credential has no physical file name.",

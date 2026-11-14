@@ -36,6 +36,7 @@ it.effect(
       let mutations = 0;
       const http = HttpClient.make((request) =>
         Effect.gen(function* () {
+          expect(request.headers.authorization).toBe("Bearer test");
           const path = new URL(request.url).pathname;
           if (path.endsWith("/auth-files"))
             return HttpClientResponse.fromWeb(request, Response.json({ files: [file] }));
@@ -78,12 +79,17 @@ it.effect(
         expect(mutations).toBe(1);
       }).pipe(
         Effect.provide([
+          Layer.succeed(SecretResolver.SecretResolver, {
+            label: (provider) => Effect.succeed(provider),
+            read: (references) => Effect.succeed(references.map(() => "test")),
+            invalidate: () => Effect.void,
+          }),
           ServerSettings.layerTest({
             usageLimitSources: {
               [UsageLimitSourceId.make("hub")]: {
                 kind: "cliproxy",
                 url: "http://hub.test",
-                managementKey: "test",
+                managementKey: { provider: SecretProviderId.make("hub-secrets"), reference: "key" },
                 enabled: true,
               },
             },

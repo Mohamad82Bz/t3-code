@@ -1462,7 +1462,7 @@ describe("ClaudeAdapterV2 context limits", () => {
           attachmentsDir: "/unused",
           fileSystem: yield* FileSystem.FileSystem,
           path: yield* Path.Path,
-          crypto: yield* Crypto.Crypto,
+          random: yield* SecureRandom.SecureRandom,
           idAllocator: yield* IdAllocator.IdAllocatorV2,
           queryRunner: {
             allocateSessionId: Effect.succeed("native-context-limits"),
@@ -1492,7 +1492,12 @@ describe("ClaudeAdapterV2 context limits", () => {
       }),
     ).pipe(
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
       ),
     ),
   );
@@ -2716,7 +2721,10 @@ describe("ClaudeAdapterV2 native fork", () => {
 
         assert.equal(openedQueries[0]?.options.resume, forkedSessionId);
         assert.equal(openedQueries[0]?.options.sessionId, undefined);
-        assert.equal(openedQueries[0]?.options.cwd, NodePath.resolve("/workspace"));
+        assert.equal(
+          NodePath.resolve(openedQueries[0]!.options.cwd!),
+          NodePath.resolve("/workspace"),
+        );
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
@@ -3655,7 +3663,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
       ),
     ),
   );
@@ -6549,7 +6562,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
         ),
       );
     },
@@ -8307,7 +8325,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   );
 
   it.effect.each([
-    { model: "claude-sonnet-4-6", contextWindow: "", maxTokens: 1_000_000, threshold: 117_000 },
+    { model: "claude-sonnet-4-6", contextWindow: "", maxTokens: 200_000, threshold: 117_000 },
     {
       model: "claude-sonnet-4-6",
       contextWindow: "500000",
@@ -8407,7 +8425,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         );
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer, NodeCrypto.layer),
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
         ),
       ),
   );
@@ -8647,6 +8670,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           NodeCrypto.layer,
         ),
       ),
+    ),
   );
 
   it.effect.each([
@@ -9596,7 +9620,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(
-        Layer.mergeAll(NodeServices.layer, IdAllocator.layer, McpProviderSessions.layer),
+        Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+        ),
       ),
     ),
   );
@@ -12420,7 +12449,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           );
         }).pipe(
           Effect.provide(
-            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer, NodeCrypto.layer
+            Layer.mergeAll(
+              IdAllocator.layer,
+              McpProviderSessions.layer,
+              NodeServices.layer,
+              NodeCrypto.layer,
+            ),
           ),
         ),
       ),
