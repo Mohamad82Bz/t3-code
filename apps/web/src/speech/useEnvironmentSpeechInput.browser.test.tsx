@@ -93,7 +93,7 @@ vi.mock("../hooks/useSettings", () => ({
   updateClientSettings: vi.fn(),
   useClientSettingsHydrated: () => true,
   useClientSettings: (selector?: (settings: Record<string, unknown>) => unknown) => {
-    const settings = { ...DEFAULT_CLIENT_SETTINGS, ...mocks.settings };
+    const settings = { ...DEFAULT_CLIENT_SETTINGS, dictationEnabled: false, ...mocks.settings };
     return selector ? selector(settings) : settings;
   },
   useEnvironmentSettings: (
@@ -204,7 +204,7 @@ vi.mock("./browserVoiceInput", () => ({
 const THREAD_ENV = "thread-env";
 
 function setup(options: { readonly destination?: string | null } = {}) {
-  mocks.settings = {};
+  mocks.settings = { dictationEnabled: false };
   setDestination(options.destination ?? null);
   if (!options.destination) localStorage.removeItem("t3code:voice-audio-grant:v1");
   chooseTranscriptCleanup(false);
@@ -305,6 +305,24 @@ it.each([
   expect(mocks.voice.state.phase).toBe("idle");
   expect(mocks.voice.transcriptionEnvironmentId).toBeNull();
   expect(localStorage.getItem("t3code:voice-audio-grant:v1")).toBeNull();
+});
+
+it("selects local Qwen without probing an environment and restores the chosen destination when disabled", async () => {
+  setup({ destination: "env-a" });
+  mocks.settings = { dictationEnabled: true };
+  using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+  using _bridge = stubGlobal("desktopBridge", {});
+  await using screen = await render(<Probe />);
+  expect(mocks.voice.available).toBe(true);
+  expect(mocks.voice.transcriptionEnvironmentLabel).toBe("Qwen on this PC");
+  expect(mocks.voice.transcriptionEnvironmentId).toBeNull();
+  expectNoAudioSent();
+  mocks.settings = { dictationEnabled: false };
+  await screen.rerender(<Probe />);
+  expect(mocks.voice.transcriptionEnvironmentId).toBe("env-a");
+  await act(() => mocks.voice.start());
+  expect(mocks.microphoneRequests).toEqual(["env-a"]);
+  await act(() => mocks.voice.cancel());
 });
 
 it.each([true, false])(

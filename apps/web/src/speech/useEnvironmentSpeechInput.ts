@@ -41,6 +41,8 @@ import { createBrowserVoiceInputPlatform } from "./browserVoiceInput";
 import { preferredSpeechLanguages } from "./preferredSpeechLanguages";
 import { runEnvironmentSpeech } from "./runEnvironmentSpeech";
 import { bindAudioGrant, readCleanupGrant, useAudioChoice } from "./voiceConsent";
+import { useDictation } from "../dictation/useDictation";
+import { isWindowsPlatform } from "../lib/utils";
 
 const INITIAL_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
 const WAITING_STATE: VoiceInputState = { phase: "preparing", error: null, errorAction: null };
@@ -84,7 +86,7 @@ function cleanupContext({ text, selection }: DraftInput): DraftInput {
   };
 }
 
-type HookInput = {
+export type HookInput = {
   /** The draft's own environment. Optional transcript cleanup runs there, never on the audio destination. */
   readonly environmentId: EnvironmentId;
   /** The draft's project: its vocabulary on that environment and its name become recognition hints. */
@@ -100,6 +102,8 @@ type HookInput = {
   readonly offerSetup?: boolean | undefined;
   /** False keeps the transcript off the cleanup provider even when cleanup is on; the model test uses it. */
   readonly cleanup?: boolean | undefined;
+  /** Model tests must exercise the selected T3 model rather than the optional desktop override. */
+  readonly nativeOnly?: boolean | undefined;
   readonly readDraft: () => DraftInput;
   readonly commitDraft: (
     text: string,
@@ -142,10 +146,30 @@ export function useVoiceTranscriptionDestination() {
 }
 
 export function useEnvironmentSpeechInput(input: HookInput) {
+  const settings = useClientSettings();
+  const qwenEnabled =
+    !input.nativeOnly &&
+    settings.dictationEnabled &&
+    Boolean(window.desktopBridge) &&
+    isWindowsPlatform(navigator.platform);
+  const native = useNativeEnvironmentSpeechInput(input, !qwenEnabled);
+  const qwen = useDictation(input, settings, qwenEnabled);
+  return qwenEnabled
+    ? {
+        ...native,
+        ...qwen,
+        status: null,
+        transcriptionEnvironmentId: null,
+        transcriptionEnvironmentLabel: "Qwen on this PC",
+      }
+    : native;
+}
+
+function useNativeEnvironmentSpeechInput(input: HookInput, enabled: boolean) {
   const navigate = useNavigate();
   const destination = useVoiceTranscriptionDestination();
-  const prepared = destination.prepared;
-  const grantId = destination.grantId;
+  const prepared = enabled ? destination.prepared : null;
+  const grantId = enabled ? destination.grantId : null;
   const cloudProvider = destination.cloudProvider;
   const cloudModel = destination.cloudModel;
   const draftCapabilities = useEnvironment(input.environmentId)?.serverConfig?.environment

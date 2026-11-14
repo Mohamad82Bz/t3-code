@@ -107,6 +107,7 @@ import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import { MicrophoneTest } from "./MicrophoneTest";
+import { QwenDictationSettings } from "./QwenDictationSettings";
 import { CloudVoiceConfiguration } from "./CloudVoiceConfiguration";
 import { LanguageRow, ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
 import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
@@ -1061,6 +1062,7 @@ function TranscriptionTest(props: {
     ownerKey: JSON.stringify([props.environmentId, props.projectId]),
     draftText: draft,
     cleanup: false,
+    nativeOnly: true,
     readDraft: () => ({
       text: draftRef.current,
       selection: { start: draftRef.current.length, end: draftRef.current.length },
@@ -1335,6 +1337,7 @@ export function VoiceSettingsPanel() {
         />
       </SettingsSection>
 
+      <QwenDictationSettings />
       <SettingsSection id="voice-transcription" title="Transcription">
         <SettingsSearchTarget
           {...searchableSetting("voice-transcription-destination")}

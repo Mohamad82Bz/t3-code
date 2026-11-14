@@ -608,6 +608,7 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("toggle" as const)),
   ),
   dictationLiveMode: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  dictationPunctuation: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   dictationLanguage: DictationLanguage.pipe(
     Schema.withDecodingDefault(Effect.succeed("English" as const)),
   ),
@@ -2154,6 +2155,7 @@ export const ClientSettingsPatch = Schema.Struct({
   dictationShortcut: Schema.optionalKey(TrimmedString.check(Schema.isMaxLength(64))),
   dictationActivationMode: Schema.optionalKey(DictationActivationMode),
   dictationLiveMode: Schema.optionalKey(Schema.Boolean),
+  dictationPunctuation: Schema.optionalKey(Schema.Boolean),
   dictationLanguage: Schema.optionalKey(DictationLanguage),
   dictationContext: Schema.optionalKey(TrimmedString.check(Schema.isMaxLength(1000))),
 });

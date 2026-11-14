@@ -273,8 +273,6 @@ import {
   usePreparingComposerImages,
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
-import { DictationControl } from "./DictationControl";
-import { useDictation } from "../../dictation/useDictation";
 import { composerCommandKeyHandler } from "./composerCommandKey";
 import { usePromptSuggestion } from "./usePromptSuggestion";
 import { useFreshSessionArmed } from "./freshSessionArms";
@@ -2602,13 +2600,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return inserted;
   };
   const insertComposerTextAtEndStable = useStableCallback(insertComposerTextAtEnd);
-  const dictation = useDictation({
-    settings,
-    onText: (text) =>
-      insertComposerTextAtEndStable(text, {
-        ensureLeadingBoundary: true,
-      }),
-  });
 
   const addComposerFolders = (folders: File[]) => {
     const target = folderDropTarget({
@@ -3576,17 +3567,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     "hidden sm:flex",
                 )}
               >
-                {window.desktopBridge && settings.dictationEnabled ? (
-                  <div className="me-1">
-                    <DictationControl
-                      state={dictation.state}
-                      elapsedSeconds={dictation.elapsedSeconds}
-                      error={dictation.error}
-                      disabled={projectSelectionRequired || activePendingIsResponding}
-                      onToggle={dictation.toggle}
-                    />
-                  </div>
-                ) : null}
                 {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
                 <div
                   data-chat-composer-actions="right"

@@ -319,6 +319,7 @@ describe("ClientSettings dictation", () => {
       dictationShortcut: "ctrl+shift+d",
       dictationActivationMode: "toggle",
       dictationLiveMode: true,
+      dictationPunctuation: false,
       dictationLanguage: "English",
       dictationContext: "",
     });

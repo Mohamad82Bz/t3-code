@@ -74,7 +74,7 @@ import {
 } from "../../modelSelection";
 import { useTextGenerationTargets } from "../../textGenerators";
 import { ensureLocalApi, readLocalApi } from "../../localApi";
-import { isMacPlatform, isWindowsPlatform } from "../../lib/utils";
+import { isMacPlatform } from "../../lib/utils";
 import {
   useEnvironmentProviders,
   useEnvironments,
@@ -550,6 +550,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.dictationLiveMode !== DEFAULT_UNIFIED_SETTINGS.dictationLiveMode
       ? ["Live dictation"]
       : []),
+    ...(settings.dictationPunctuation !== DEFAULT_UNIFIED_SETTINGS.dictationPunctuation
+      ? ["Qwen automatic punctuation"]
+      : []),
     ...(settings.dictationLanguage !== DEFAULT_UNIFIED_SETTINGS.dictationLanguage
       ? ["Dictation language"]
       : []),
@@ -684,6 +687,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       dictationShortcut: DEFAULT_UNIFIED_SETTINGS.dictationShortcut,
       dictationActivationMode: DEFAULT_UNIFIED_SETTINGS.dictationActivationMode,
       dictationLiveMode: DEFAULT_UNIFIED_SETTINGS.dictationLiveMode,
+      dictationPunctuation: DEFAULT_UNIFIED_SETTINGS.dictationPunctuation,
       dictationLanguage: DEFAULT_UNIFIED_SETTINGS.dictationLanguage,
       dictationContext: DEFAULT_UNIFIED_SETTINGS.dictationContext,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
@@ -1083,130 +1087,6 @@ export function GeneralSettingsPanel() {
   );
 }
 
-function DictationSettingsSection() {
-  const settings = useScopedSettings();
-  const updateSettings = useUpdateScopedSettings();
-  if (!isElectron || !isWindowsPlatform(navigator.platform)) return null;
-
-  return (
-    <SettingsSection id={searchableSetting("dictation").id} title="Dictation">
-      <SettingsRow
-        title="Enable dictation"
-        description="Use Qwen Dictation to insert speech into the composer from anywhere on the desktop."
-        control={
-          <Switch
-            checked={settings.dictationEnabled}
-            onCheckedChange={(checked) => updateSettings({ dictationEnabled: Boolean(checked) })}
-            aria-label="Enable dictation"
-          />
-        }
-      />
-      <SettingsRow
-        title="Shortcut"
-        description="The global shortcut used to start or stop dictation."
-        control={
-          <DraftInput
-            size="sm"
-            className="w-full sm:w-44"
-            value={settings.dictationShortcut}
-            onCommit={(value) => updateSettings({ dictationShortcut: value })}
-            placeholder="ctrl+shift+d"
-            spellCheck={false}
-            aria-label="Dictation shortcut"
-          />
-        }
-      />
-      <SettingsRow
-        title="Activation"
-        description="Toggle starts and stops recording; hold records while the shortcut is held."
-        control={
-          <Select
-            value={settings.dictationActivationMode}
-            onValueChange={(value) => {
-              if (value === "toggle" || value === "hold") {
-                updateSettings({ dictationActivationMode: value });
-              }
-            }}
-          >
-            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Dictation activation">
-              <SelectValue>
-                {settings.dictationActivationMode === "hold" ? "Hold" : "Toggle"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectPopup align="end" alignItemWithTrigger={false}>
-              <SelectItem value="toggle">Toggle</SelectItem>
-              <SelectItem value="hold">Hold</SelectItem>
-            </SelectPopup>
-          </Select>
-        }
-      />
-      <SettingsRow
-        title="Live insertion"
-        description="Insert stable words while you speak instead of waiting until recording ends."
-        control={
-          <Switch
-            checked={settings.dictationLiveMode}
-            onCheckedChange={(checked) => updateSettings({ dictationLiveMode: Boolean(checked) })}
-            aria-label="Live dictation insertion"
-          />
-        }
-      />
-      <SettingsRow
-        title="Language"
-        description="Language sent to Qwen Dictation for recognition."
-        control={
-          <Select
-            value={settings.dictationLanguage}
-            onValueChange={(value) => {
-              if (value === "English" || value === "Persian" || value === "Auto") {
-                updateSettings({ dictationLanguage: value });
-              }
-            }}
-          >
-            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Dictation language">
-              <SelectValue>{settings.dictationLanguage}</SelectValue>
-            </SelectTrigger>
-            <SelectPopup align="end" alignItemWithTrigger={false}>
-              <SelectItem value="English">English</SelectItem>
-              <SelectItem value="Persian">Persian</SelectItem>
-              <SelectItem value="Auto">Automatic</SelectItem>
-            </SelectPopup>
-          </Select>
-        }
-      />
-      <SettingsRow
-        title="Vocabulary"
-        description="Optional names and technical terms sent as recognition context."
-        control={
-          <DraftInput
-            size="sm"
-            className="w-full sm:w-72"
-            value={settings.dictationContext}
-            onCommit={(value) => updateSettings({ dictationContext: value })}
-            placeholder="Names, products, technical terms"
-            spellCheck={false}
-            aria-label="Dictation vocabulary"
-          />
-        }
-      />
-      <SettingsRow
-        title="Qwen Dictation path"
-        description="The local installation that provides the authenticated streaming API."
-        control={
-          <DraftInput
-            size="sm"
-            className="w-full sm:w-72"
-            value={settings.dictationPath}
-            onCommit={(value) => updateSettings({ dictationPath: value })}
-            spellCheck={false}
-            aria-label="Qwen Dictation path"
-          />
-        }
-      />
-    </SettingsSection>
-  );
-}
-
 export function ChatSettingsPanel() {
   const modifierLabel = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
   const sendShortcutOptions = [
@@ -1320,8 +1200,6 @@ export function ChatSettingsPanel() {
           />
         </AdvancedSettings>
       </SettingsSection>
-
-      <DictationSettingsSection />
 
       <SettingsSection id="follow-ups" title="Follow-ups">
         <SettingsRow

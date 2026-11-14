@@ -63,7 +63,9 @@ function ownsShortcut(id: symbol) {
 export function useDictationShortcut(input: ShortcutInput) {
   const id = useRef(Symbol("dictation-target"));
   const subscribeKeys = input.subscribeKeys;
-  const mode = useClientSettings((settings) => settings.voiceShortcutMode);
+  const settings = useClientSettings();
+  const mode = settings.voiceShortcutMode;
+  const globalMode = settings.dictationActivationMode;
   const current = useRef(input);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes committed actions to the window keyboard listener and shortcut registry
   useEffect(() => {
@@ -145,6 +147,31 @@ export function useDictationShortcut(input: ShortcutInput) {
         starting: speech.start(),
       };
     };
+    let globalStart: Promise<void> | null = null;
+    const unsubscribeGlobal = window.desktopBridge?.onDictationShortcut?.((event) => {
+      if (!ownsShortcut(id.current)) return;
+      const { speech, disabled } = current.current;
+      if (event.type === "up") {
+        const starting = globalStart;
+        globalStart = null;
+        if (globalMode === "hold" && starting)
+          void starting.then(() => {
+            if (!disposed) return current.current.speech.stop();
+          });
+        return;
+      }
+      if (speech.state.phase === "recording") {
+        if (event.type === "toggle") void speech.stop();
+        return;
+      }
+      if (
+        disabled ||
+        !speech.available ||
+        (speech.state.phase !== "idle" && speech.state.phase !== "error")
+      )
+        return;
+      if (event.type === "toggle" || globalMode === "hold") globalStart = speech.start();
+    });
     const onBlur = () => finish(null);
     const unsubscribe = subscribeKeys?.({
       keydown: (event) => window.dispatchEvent(event),
@@ -159,11 +186,12 @@ export function useDictationShortcut(input: ShortcutInput) {
       pressed.current = null;
       shortcutTargets.delete(id.current);
       unsubscribe?.();
+      unsubscribeGlobal?.();
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", finish, true);
       window.removeEventListener("blur", onBlur);
     };
-  }, [mode, subscribeKeys]);
+  }, [mode, globalMode, subscribeKeys]);
 
   return shortcutLabelForCommand(input.keybindings, "composer.dictation", {
     context: { terminalFocus: false, terminalOpen: input.terminalOpen },

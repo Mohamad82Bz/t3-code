@@ -1,262 +1,196 @@
-import type { DesktopDictationShortcutEvent, UnifiedSettings } from "@t3tools/contracts";
+import {
+  resolveTranscriptCommit,
+  VOICE_RECORDING_LIMIT_SECONDS,
+  voiceInputBlocksSubmission,
+  type VoiceInputState,
+} from "@t3tools/client-runtime/voice-input";
+import type { ClientSettings } from "@t3tools/contracts";
 import { useEffect, useRef, useState } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { createBrowserPcmCapture } from "../speech/browserPcmCapture";
+import type { HookInput } from "../speech/useEnvironmentSpeechInput";
+import { openQwenStream } from "./qwenStream";
 
-export type DictationState = "idle" | "starting" | "listening" | "finishing" | "error";
+const IDLE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
 
-interface DictationSession {
-  readonly socket: WebSocket;
-  readonly stream: MediaStream;
-  readonly audioContext: AudioContext;
-  readonly source: MediaStreamAudioSourceNode;
-  readonly processor: ScriptProcessorNode;
-  readonly liveMode: boolean;
-  readonly startedAt: number;
-  started: boolean;
-  finishRequested: boolean;
-  settled: boolean;
-}
+type Session = {
+  ownerKey: string;
+  abort: AbortController;
+  capture: ReturnType<typeof createBrowserPcmCapture>;
+  stream?: Awaited<ReturnType<typeof openQwenStream>>;
+  starting: Promise<void>;
+  stopping: Promise<void> | null;
+  submit: ((text: string) => void) | null;
+  live: boolean;
+};
 
-function downsampleToPcm16(input: Float32Array, sourceRate: number): ArrayBuffer {
-  const targetRate = 16_000;
-  const ratio = sourceRate / targetRate;
-  const outputLength = Math.max(1, Math.round(input.length / ratio));
-  const output = new Int16Array(outputLength);
-  for (let index = 0; index < outputLength; index += 1) {
-    const sourceIndex = index * ratio;
-    const left = Math.floor(sourceIndex);
-    const right = Math.min(left + 1, input.length - 1);
-    const fraction = sourceIndex - left;
-    const sample = (input[left] ?? 0) * (1 - fraction) + (input[right] ?? 0) * fraction;
-    output[index] = Math.max(-1, Math.min(1, sample)) * 0x7fff;
-  }
-  return output.buffer;
-}
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : "Dictation could not start.";
-}
-
-export function useDictation({
-  settings,
-  onText,
-}: {
-  readonly settings: Pick<
-    UnifiedSettings,
-    | "dictationEnabled"
-    | "dictationActivationMode"
-    | "dictationLanguage"
-    | "dictationContext"
-    | "dictationLiveMode"
-  >;
-  readonly onText: (text: string) => boolean;
-}) {
-  const [state, setState] = useState<DictationState>("idle");
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const sessionRef = useRef<DictationSession | null>(null);
-  const onTextStable = useStableCallback(onText);
-
-  const cleanup = useStableCallback((session: DictationSession) => {
+export function useDictation(input: HookInput, settings: ClientSettings, enabled: boolean) {
+  const [state, setState] = useState<VoiceInputState>(IDLE);
+  const [level, setLevel] = useState(0);
+  const sessionRef = useRef<Session | null>(null);
+  const current = useRef({ input, settings, enabled });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the committed draft owner and preferences to asynchronous microphone callbacks
+  useEffect(() => {
+    current.current = { input, settings, enabled };
+  });
+  const isCurrent = useStableCallback(
+    (session: Session) =>
+      sessionRef.current === session &&
+      !session.abort.signal.aborted &&
+      current.current.enabled &&
+      !current.current.input.disabled &&
+      current.current.input.ownerKey === session.ownerKey,
+  );
+  const release = useStableCallback((session: Session) => {
     if (sessionRef.current === session) sessionRef.current = null;
-    session.processor.onaudioprocess = null;
-    session.processor.disconnect();
-    session.source.disconnect();
-    session.stream.getTracks().forEach((track) => track.stop());
-    void session.audioContext.close().catch(() => undefined);
-    if (
-      session.socket.readyState === WebSocket.OPEN ||
-      session.socket.readyState === WebSocket.CONNECTING
-    ) {
-      session.socket.close();
-    }
+    session.abort.abort();
+    session.capture.cancelRecording();
   });
-
-  const finish = useStableCallback(() => {
-    const session = sessionRef.current;
-    if (!session || session.settled) return;
-    session.finishRequested = true;
-    setState("finishing");
-    if (session.started && session.socket.readyState === WebSocket.OPEN) {
-      session.socket.send(JSON.stringify({ type: "finish" }));
-    }
-  });
-
-  const start = useStableCallback(async () => {
-    if (!settings.dictationEnabled || sessionRef.current !== null) return;
-    const bridge = window.desktopBridge;
-    if (!bridge || !navigator.mediaDevices?.getUserMedia) return;
-
-    setError(null);
-    setElapsedSeconds(0);
-    setState("starting");
-    let session: DictationSession | null = null;
-    try {
-      const config = await bridge.getDictationSessionConfig();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          sampleRate: 16_000,
-        },
-      });
-      const audioContext = new AudioContext({ sampleRate: 16_000 });
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(2048, 1, 1);
-      const socket = new WebSocket(config.endpoint);
-      socket.binaryType = "arraybuffer";
-      session = {
-        socket,
-        stream,
-        audioContext,
-        source,
-        processor,
-        liveMode: settings.dictationLiveMode,
-        startedAt: Date.now(),
-        started: false,
-        finishRequested: false,
-        settled: false,
-      };
-      sessionRef.current = session;
-
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        const rejectStart = (cause: unknown) => {
-          if (settled) return;
-          settled = true;
-          reject(cause);
-        };
-        socket.onerror = () => rejectStart(new Error("Qwen Dictation API is unavailable."));
-        socket.onclose = () => rejectStart(new Error("Qwen Dictation API disconnected."));
-        socket.onopen = () => {
-          socket.send(
-            JSON.stringify({
-              type: "start",
-              token: config.token,
-              language: settings.dictationLanguage,
-              context: settings.dictationContext,
-              sample_rate: 16_000,
-              commit_mode: settings.dictationLiveMode ? "stable" : "session",
-            }),
-          );
-        };
-        socket.onmessage = (event) => {
-          if (typeof event.data !== "string") return;
-          let message: Record<string, unknown>;
-          try {
-            message = JSON.parse(event.data) as Record<string, unknown>;
-          } catch {
-            return;
-          }
-          if (message.type === "started") {
-            settled = true;
-            session!.started = true;
-            setState("listening");
-            if (session!.finishRequested) {
-              socket.send(JSON.stringify({ type: "finish" }));
-            }
-            resolve();
-            return;
-          }
-          if (message.type === "error") {
-            rejectStart(
-              new Error(
-                typeof message.message === "string" ? message.message : "Recognition failed.",
-              ),
-            );
-            return;
-          }
-          const delta = typeof message.committed_delta === "string" ? message.committed_delta : "";
-          if (session!.liveMode && delta.length > 0) onTextStable(delta);
-          if (message.type === "finished") {
-            if (!session!.liveMode && delta.length > 0) onTextStable(delta);
-            session!.settled = true;
-            cleanup(session!);
-            setState("idle");
-            setElapsedSeconds(0);
-          }
-          if (message.type === "cancelled") {
-            session!.settled = true;
-            cleanup(session!);
-            setState("idle");
-            setElapsedSeconds(0);
-          }
-        };
-      });
-
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-      processor.onaudioprocess = (event) => {
-        if (!session || session.settled || !session.started || session.finishRequested) return;
-        if (socket.readyState !== WebSocket.OPEN) return;
-        const input = event.inputBuffer.getChannelData(0);
-        socket.send(downsampleToPcm16(input, audioContext.sampleRate));
-      };
-      await audioContext.resume();
-    } catch (cause) {
-      if (session) {
-        session.settled = true;
-        cleanup(session);
-      }
-      setState("error");
-      setError(formatError(cause));
-    }
-  });
-
-  const toggle = useStableCallback(() => {
-    if (sessionRef.current) finish();
-    else void start();
-  });
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the global desktop shortcut listener synchronized with the mounted composer
-  useEffect(() => {
-    const bridge = window.desktopBridge;
-    if (!bridge || !settings.dictationEnabled) return;
-    const unsubscribe = bridge.onDictationShortcut((event: DesktopDictationShortcutEvent) => {
-      if (event.type === "toggle") {
-        toggle();
-      } else if (settings.dictationActivationMode === "hold") {
-        if (event.type === "down") void start();
-        else if (event.type === "up") finish();
-      }
+  const fail = useStableCallback((session: Session, cause: unknown) => {
+    if (!isCurrent(session)) return;
+    release(session);
+    setLevel(0);
+    setState({
+      phase: "error",
+      error: cause instanceof Error ? cause.message : "Qwen dictation failed.",
+      errorAction: "retry",
     });
-    return unsubscribe;
-  }, [finish, settings.dictationActivationMode, settings.dictationEnabled, start, toggle]);
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the elapsed recording indicator synchronized with the active native recording session
-  useEffect(() => {
-    if (state === "idle" || state === "error") return;
-    const timer = window.setInterval(() => {
-      const session = sessionRef.current;
-      if (session)
-        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000)));
-    }, 1_000);
-    return () => window.clearInterval(timer);
-  }, [state]);
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the microphone, audio graph and WebSocket resource when the composer unmounts
-  useEffect(() => {
-    return () => {
-      const session = sessionRef.current;
-      if (!session) return;
-      session.settled = true;
-      if (session.socket.readyState === WebSocket.OPEN) {
-        session.socket.send(JSON.stringify({ type: "cancel" }));
+  });
+  const insert = useStableCallback((session: Session, text: string) => {
+    if (!isCurrent(session)) return;
+    const draft = current.current.input.readDraft();
+    const snapshot = { ...draft, ownerKey: session.ownerKey, revision: 0 };
+    const result = resolveTranscriptCommit(
+      snapshot,
+      snapshot,
+      text,
+      current.current.settings.dictationLanguage === "Persian" ? "fa" : "en",
+    );
+    if (result.kind === "commit") current.current.input.commitDraft(result.text, result.selection);
+  });
+  const cancel = useStableCallback(() => {
+    const session = sessionRef.current;
+    if (session) release(session);
+    setLevel(0);
+    setState(IDLE);
+  });
+  const stop = useStableCallback(async () => {
+    const session = sessionRef.current;
+    if (!session || session.stopping) return session?.stopping ?? undefined;
+    session.stopping = (async () => {
+      try {
+        await session.starting;
+        if (!isCurrent(session) || !session.stream) return;
+        setState({ phase: "transcribing", error: null, errorAction: null });
+        await session.capture.recorder.stop();
+        const text = await session.stream.finish();
+        if (!isCurrent(session)) return;
+        if (!session.live) insert(session, text);
+        const submit = session.submit;
+        const draft = current.current.input.readDraft().text;
+        release(session);
+        setLevel(0);
+        setState(IDLE);
+        submit?.(draft);
+      } catch (cause) {
+        fail(session, cause);
       }
-      cleanup(session);
+    })();
+    return session.stopping;
+  });
+  const start = useStableCallback(async () => {
+    const { input: draft, settings: preferences, enabled: active } = current.current;
+    const bridge = window.desktopBridge;
+    if (!active || draft.disabled || !bridge || sessionRef.current) return;
+    const abort = new AbortController();
+    const session: Session = {
+      ownerKey: draft.ownerKey,
+      abort,
+      live: preferences.dictationLiveMode,
+      starting: Promise.resolve(),
+      stopping: null,
+      submit: null,
+      capture: createBrowserPcmCapture(
+        {
+          getMicrophoneId: () => preferences.voiceMicrophone,
+          onLevel: (value) => {
+            if (isCurrent(session)) setLevel(value);
+          },
+          onDurationLimit: () => void stop(),
+          onError: (message) => fail(session, new Error(message)),
+        },
+        async ({ signal }) => {
+          const config = await bridge.getDictationSessionConfig();
+          signal.throwIfAborted();
+          const stream = await openQwenStream({
+            config,
+            settings: preferences,
+            signal,
+            onDelta: (text) => insert(session, text),
+            onError: (message) => fail(session, new Error(message)),
+          });
+          session.stream = stream;
+          return { locale: "en", transcribe: async () => "", streaming: stream };
+        },
+      ),
     };
-  }, [cleanup]);
+    sessionRef.current = session;
+    setLevel(0);
+    setState({ phase: "preparing", error: null, errorAction: null });
+    session.starting = (async () => {
+      try {
+        await session.capture.transcriber.prepare({ signal: abort.signal });
+        abort.signal.throwIfAborted();
+        await session.capture.recorder.prepareToRecordAsync(abort.signal);
+        if (!isCurrent(session)) {
+          release(session);
+          return;
+        }
+        session.capture.recorder.record({ forDuration: VOICE_RECORDING_LIMIT_SECONDS });
+        setState({ phase: "recording", error: null, errorAction: null });
+      } catch (cause) {
+        fail(session, cause);
+      }
+    })();
+    await session.starting;
+  });
+  const submitAfterDictation = useStableCallback((submit: (text: string) => void) => {
+    if (current.current.input.disabled) return;
+    const session = sessionRef.current;
+    if (!session) {
+      submit(current.current.input.readDraft().text);
+      return;
+    }
+    if (session.submit) return;
+    session.submit = submit;
+    void stop();
+  });
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- abandons microphone capture when the editor owner or selected transcription backend changes
+  useEffect(() => {
+    const session = sessionRef.current;
+    if (!enabled || input.disabled || (session && session.ownerKey !== input.ownerKey)) cancel();
+    return cancel;
+  }, [input.ownerKey, input.disabled, enabled, cancel]);
 
   return {
+    available:
+      enabled &&
+      Boolean(navigator.mediaDevices?.getUserMedia) &&
+      typeof AudioWorkletNode !== "undefined",
     state,
-    elapsedSeconds,
-    error,
-    isActive: state === "starting" || state === "listening" || state === "finishing",
-    toggle,
+    level,
+    preview: null,
+    preparing: state.phase === "preparing",
+    blocksSubmission: voiceInputBlocksSubmission(state),
+    freezesEditor:
+      voiceInputBlocksSubmission(state) &&
+      !(state.phase === "recording" && settings.dictationLiveMode),
     start,
-    finish,
+    stop,
+    cancel,
+    submitAfterDictation,
+    skipPostProcessing: () => undefined,
   };
 }

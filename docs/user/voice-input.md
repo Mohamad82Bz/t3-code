@@ -12,7 +12,22 @@ to a named environment on that phone, open **Settings → Voice → Transcribe o
 
 ## Choose where audio goes
 
-On web and desktop, you choose where transcription runs.
+On Windows desktop in this fork, **Settings → Voice → Qwen dictation** offers
+**Use local Qwen for voice input**, enabled by default. The regular microphone
+and dictation shortcuts use the existing Qwen Dictation service on your PC,
+without sending audio to an environment or cloud provider. The service must be
+running; there is no automatic fallback. Turn this option off to use T3's normal
+transcription destination instead. Web and mobile keep their normal voice input.
+
+**Automatic punctuation** under Qwen is off by default. Periods, commas, and
+other punctuation are removed from Qwen's output, while punctuation you type
+manually is untouched. Turn it on to keep Qwen's punctuation. With **Live insertion**
+on, stable words are inserted at your current cursor as you speak and you can
+continue editing. Cancelling stops future insertion but keeps words already
+inserted. Qwen uses its own language and vocabulary settings and bypasses T3's
+transcript cleanup. Its optional global shortcut uses the same microphone flow.
+
+On web and desktop without Qwen enabled, you choose where transcription runs.
 Nothing is sent until you choose one: open **Settings → Voice** and set
 **Transcribe with** to the environment that should transcribe for you.
 On a new device, the microphone or dictation shortcut opens that setting from the composer.
