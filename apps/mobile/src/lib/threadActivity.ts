@@ -271,7 +271,10 @@ function compactWorkEntryText(value: string): string {
 
 export function workEntryRowLabel(entry: WorkLogPresentationEntry, expanded = false): string {
   if (entry.structuredPayload?.type === "file_change") {
-    return fileBasename(entry.structuredPayload.fileName);
+    const item = entry.structuredPayload;
+    const name = fileBasename(item.fileName);
+    const count = item.changes?.length ?? 1;
+    return count > 1 ? `${name} +${count - 1} more` : name;
   }
   if (entry.itemType === "fork") return entry.label;
   if (expanded && entry.itemType === "reasoning")
