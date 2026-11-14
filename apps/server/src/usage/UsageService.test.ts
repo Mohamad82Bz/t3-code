@@ -19,10 +19,12 @@ import {
   ProviderInstanceId,
   UsageDay,
   UsageLimitSourceId,
+  SecretProviderId,
   type UsageSource,
   type UsageSummary,
   type UsageSummaryInput,
 } from "@t3tools/contracts";
+import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as Duration from "effect/Duration";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -546,9 +548,9 @@ describe("UsageService", () => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "uses CPA prices for native model IDs and lets explicit environment prices override them",
-    () =>
+  it.effect.each([false, true])(
+    "uses CPA prices and environment overrides with a referenced key: %s",
+    (referencedKey) =>
       Effect.gen(function* () {
         const { home, transcript, settings } = yield* setup;
         yield* Effect.promise(() =>
@@ -574,10 +576,15 @@ describe("UsageService", () => {
             assert.strictEqual(cost.status, "ready");
             assert.approximately(cost.costUsd!, override ? 0.00004 : 0.00007, 1e-12);
           }).pipe(
+            Effect.provideService(SecretResolver.SecretResolver, {
+              label: (provider) => Effect.succeed(provider),
+              read: (references) => Effect.succeed(references.map(() => "test-key")),
+              invalidate: () => Effect.void,
+            }),
             Effect.scoped,
             Effect.provide(
               layerService({
-                prefix: `session-cpa-${override}`,
+                prefix: `session-cpa-${override}-${referencedKey}`,
                 home,
                 settings: {
                   ...settings,
@@ -585,7 +592,9 @@ describe("UsageService", () => {
                     [UsageLimitSourceId.make("test")]: {
                       kind: "cliproxy",
                       url: "https://hub.example",
-                      managementKey: "test-key",
+                      managementKey: referencedKey
+                        ? { provider: SecretProviderId.make("hub-secrets"), reference: "key" }
+                        : "test-key",
                       enabled: true,
                     },
                   },

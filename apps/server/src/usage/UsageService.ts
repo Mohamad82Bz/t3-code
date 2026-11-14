@@ -10,7 +10,12 @@ import {
   type UsageSummaryInput,
   type SessionCost,
   UsageReadError,
+  UsageLimitSourceConfig,
+  settingsSecretLiteral,
 } from "@t3tools/contracts";
+import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
+import * as SecretResolverLayer from "../secrets/SecretResolver.ts";
+import { resolveSettingsSecrets } from "../secrets/settingsSecretValue.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -173,6 +178,7 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const httpClient = yield* HttpClient.HttpClient;
+  const secretResolver = yield* Effect.serviceOption(SecretResolver.SecretResolver);
   const hostEnvironment = yield* HostProcess.Environment;
   const hostname = yield* HostProcess.Hostname;
   const readerContext = yield* Effect.context<BuiltInUsageReadersEnv>();
@@ -1003,21 +1009,32 @@ export const make = Effect.gen(function* () {
   const readHubPrices = Effect.fn("UsageService.readHubPrices")(function* (
     settings: ServerSettingsValue,
   ) {
-    const hubs = Object.values(settings.usageLimitSources).filter(
-      (hub) => hub.enabled && hub.managementKey.length > 0,
-    );
+    const hubs = (yield* Effect.forEach(
+      Object.values(settings.usageLimitSources).filter((hub) => hub.enabled),
+      (hub) =>
+        Effect.gen(function* () {
+          const resolved = Option.isSome(secretResolver)
+            ? yield* resolveSettingsSecrets(secretResolver.value, UsageLimitSourceConfig, hub)
+            : hub;
+          return { ...resolved, managementKey: settingsSecretLiteral(resolved.managementKey) };
+        }),
+      { concurrency: 4 },
+    )).filter((hub) => hub.managementKey.length > 0);
     const key = encodeUsageRecordKey(hubs);
     const now = yield* Clock.currentTimeMillis;
     if (hubPrices?.key === key && now - hubPrices.checkedAt < 60_000) return hubPrices.prices;
     const results = yield* Effect.forEach(
       hubs,
       (hub) =>
-        Effect.try(() =>
-          new URL(
-            "v0/management/model-prices",
-            hub.url.endsWith("/") ? hub.url : `${hub.url}/`,
-          ).toString(),
-        ).pipe(
+        Effect.try({
+          try: () =>
+            new URL(
+              "v0/management/model-prices",
+              hub.url.endsWith("/") ? hub.url : `${hub.url}/`,
+            ).toString(),
+          catch: () =>
+            new UsageReadError({ reason: "scanFailed", detail: "The hub URL is not valid." }),
+        }).pipe(
           Effect.flatMap((url) =>
             httpClient.get(url, { headers: { Authorization: `Bearer ${hub.managementKey}` } }),
           ),
@@ -1183,4 +1200,6 @@ export const make = Effect.gen(function* () {
   return { readSummary, refreshRates, readSessionCost, awaitPersisted } as const;
 });
 
-export const layer = Layer.effect(UsageService, make);
+export const layer = Layer.effect(UsageService, make).pipe(
+  Layer.provide(SecretResolverLayer.layer),
+);
