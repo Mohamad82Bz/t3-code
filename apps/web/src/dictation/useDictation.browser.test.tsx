@@ -42,7 +42,6 @@ function Probe({ owner = "draft", live = true, enabled = true } = {}) {
     {
       environmentId: EnvironmentId.make("test"),
       ownerKey: owner,
-      draftText: mocks.draft,
       readDraft: () => ({
         text: mocks.draft,
         selection: { start: mocks.selection, end: mocks.selection },
