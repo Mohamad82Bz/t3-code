@@ -5,7 +5,7 @@ import type {
   UsageLimitSourceConfig,
   UsageLimitSourceId,
 } from "@t3tools/contracts";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { Button } from "../ui/button";
@@ -40,6 +40,7 @@ export function AddUsageLimitSourceDialog({
   readonly source?: { readonly id: UsageLimitSourceId; readonly config: UsageLimitSourceConfig };
   readonly sources: UnifiedSettings["usageLimitSources"];
 }) {
+  const formId = useId();
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [label, setLabel] = useState(source?.config.label ?? "");
   const [url, setUrl] = useState(source?.config.url ?? "");
@@ -101,6 +102,7 @@ export function AddUsageLimitSourceDialog({
         </DialogHeader>
         <DialogPanel>
           <form
+            id={formId}
             className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault();
@@ -124,6 +126,7 @@ export function AddUsageLimitSourceDialog({
                 aria-label="Management key"
                 value={keyDraft}
                 sources={secretSources}
+                environmentId={environmentId}
                 onChange={(event) => setKeyDraft(event.target.value)}
                 onSecretChange={(secret) => setKeyDraft(secret ?? "")}
                 onValidityChange={setKeyValid}
@@ -174,7 +177,7 @@ export function AddUsageLimitSourceDialog({
           >
             Cancel
           </Button>
-          <Button onClick={save} disabled={!canSave}>
+          <Button type="submit" form={formId} disabled={!canSave}>
             {source ? "Save hub" : "Add hub"}
           </Button>
         </DialogFooter>
