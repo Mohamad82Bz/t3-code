@@ -5,7 +5,8 @@ import { expect, it, vi } from "vite-plus/test";
 import { SidebarProvider } from "../ui/sidebar";
 import { SidebarEnvironmentFilter } from "./SidebarEnvironmentFilter";
 
-vi.mock("../../state/environments", () => ({
+vi.mock("../../state/environments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/environments")>()),
   useEnvironmentIdentities: () => [
     { environmentId: "local", label: "Local" },
     { environmentId: "wsl", label: "WSL" },
