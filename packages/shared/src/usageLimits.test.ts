@@ -273,7 +273,9 @@ describe("pools", () => {
     expect(
       collectCodexCredentialSources(selected)[0]?.accounts.map((account) => account.id),
     ).toEqual(["disabled", "unreadable", "enabled"]);
-    expect(collectLimitAccounts(selected).map((account) => account.key)).toEqual(["hub:enabled"]);
+    expect(collectLimitAccounts(selected).map((account) => account.key)).toEqual([
+      "env-a:hub:enabled",
+    ]);
     expect(collectLimitAccounts(selected, { separateCodexCredentials: true })).toEqual([]);
     expect(collectCodexCredentialSources(new Map())).toEqual([]);
   });
