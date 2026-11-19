@@ -25,6 +25,7 @@ export function createBrowserVoiceInputPlatform(input: {
   readonly cloudProvider?: CloudSpeechProvider | undefined;
   /** The exact OpenRouter model the grant names; required with that provider. */
   readonly cloudModel?: CloudSpeechModelId | undefined;
+  readonly openaiBaseUrl?: string | undefined;
   readonly hasAudioConsent: () => boolean;
   readonly getTranscriptionOptions: () => SpeechTranscriptionOptions;
   readonly getStreamingEnabled: () => boolean;
@@ -53,6 +54,7 @@ export function createBrowserVoiceInputPlatform(input: {
                 recordingOptions,
                 input.hasAudioConsent,
                 input.cloudModel,
+                input.openaiBaseUrl,
               )
             : transcribeEnvironmentPcm(
                 input.prepared,
@@ -81,7 +83,7 @@ export function createBrowserVoiceInputPlatform(input: {
           message: "Choose an OpenRouter model in Settings → Voice.",
         });
       await runEnvironmentSpeech(
-        requireCloudSpeechKey(input.prepared, input.cloudProvider),
+        requireCloudSpeechKey(input.prepared, input.cloudProvider, input.openaiBaseUrl),
         options,
       );
       throwIfVoiceTranscriptionAborted(options.signal);

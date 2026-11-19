@@ -92,8 +92,12 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
         "setCloudKey",
         Effect.fn("environment.voice.setCloudKey")(function* (args) {
           yield* guard(args.endpoint.name, AuthSettingsWriteScope);
+          const { provider } = args.params;
+          const { key, openaiBaseUrl } = args.payload;
+          if (openaiBaseUrl === undefined ? key === undefined : provider !== "openai")
+            return yield* failEnvironmentInvalidRequest("invalid_command");
           yield* cloud
-            .setKey(args.params.provider, args.payload.key)
+            .setKey(provider, key, openaiBaseUrl)
             .pipe(Effect.catch((error) => failEnvironmentInternal("internal_error", error)));
         }),
       )
@@ -116,6 +120,7 @@ export const speechHttpApiLayer = HttpApiBuilder.group(
               decoded.value.pcm,
               decoded.value.options,
               args.query.model,
+              args.query.openaiBaseUrl,
             )
             .pipe(
               Effect.catchTags({

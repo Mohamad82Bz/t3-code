@@ -132,6 +132,7 @@ export function useVoiceTranscriptionDestination() {
     environmentId,
     ...(provider ? { cloudProvider: provider } : {}),
     ...(model ? { cloudModel: model } : {}),
+    ...(cloud?.provider === "openai" && cloud.baseUrl ? { openaiBaseUrl: cloud.baseUrl } : {}),
     grantId: grant?.id ?? null,
     label:
       provider && environment
@@ -148,6 +149,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
   const grantId = destination.grantId;
   const cloudProvider = destination.cloudProvider;
   const cloudModel = destination.cloudModel;
+  const openaiBaseUrl = destination.openaiBaseUrl;
   const draftCapabilities = useEnvironment(input.environmentId)?.serverConfig?.environment
     .capabilities;
   const originatingConnection = Option.getOrNull(usePreparedConnection(input.environmentId));
@@ -234,6 +236,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
       prepared,
       cloudProvider,
       cloudModel,
+      openaiBaseUrl,
       hasAudioConsent,
       getStreamingEnabled: () => latestRef.current.clientSettings.speechStreaming,
       getTranscriptionOptions: (): SpeechTranscriptionOptions => {
@@ -348,7 +351,7 @@ export function useEnvironmentSpeechInput(input: HookInput) {
       controller.dispose();
       if (controllerRef.current === controller) controllerRef.current = null;
     };
-  }, [prepared, grantId, cloudProvider, cloudModel]);
+  }, [prepared, grantId, cloudProvider, cloudModel, openaiBaseUrl]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- probes the chosen environment's speech status once its connection is available
   useEffect(() => {

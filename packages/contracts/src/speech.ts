@@ -1,7 +1,36 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+
+export const DEFAULT_OPENAI_SPEECH_BASE_URL = "https://api.openai.com/v1";
+
+export function normalizeOpenAiSpeechBaseUrl(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > 2048 || !/^https?:\/\//i.test(trimmed) || /[\s\\?#]/u.test(trimmed))
+    return undefined;
+  if (/^https?:\/\/[^/]*@/i.test(trimmed)) return undefined;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (url.username || url.password) return undefined;
+  if (url.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))
+    return undefined;
+  const base = url.href.replace(/\/+$/, "");
+  return base === DEFAULT_OPENAI_SPEECH_BASE_URL ? "" : base;
+}
+
+export const OpenAiSpeechBaseUrl = TrimmedString.check(
+  Schema.makeFilter((value) =>
+    normalizeOpenAiSpeechBaseUrl(value) !== undefined
+      ? true
+      : "Enter an HTTPS API base URL without credentials, a query, or a fragment. HTTP is allowed on loopback.",
+  ),
+);
 
 export const CloudSpeechApiKey = TrimmedNonEmptyString.check(
   Schema.isMaxLength(4096),
@@ -25,6 +54,7 @@ export const CloudSpeechKeys = Schema.Struct({
   openai: Schema.Boolean,
   xai: Schema.Boolean,
   openrouter: Schema.optionalKey(Schema.Boolean),
+  openaiBaseUrl: Schema.optionalKey(OpenAiSpeechBaseUrl),
 });
 export type CloudSpeechKeys = typeof CloudSpeechKeys.Type;
 
@@ -47,6 +77,7 @@ export class CloudSpeechError extends Schema.TaggedError<CloudSpeechError>()(
     reason: Schema.Literals([
       "missing-key",
       "key-changed",
+      "endpoint-changed",
       "unreadable-key",
       "rejected-key",
       "rate-limit",
@@ -63,6 +94,8 @@ export class CloudSpeechError extends Schema.TaggedError<CloudSpeechError>()(
         return `Add your ${name} API key in Settings → Voice.`;
       case "key-changed":
         return `The ${name} key changed before your recording was sent. Try again.`;
+      case "endpoint-changed":
+        return "The OpenAI Base URL changed. Confirm the destination again in Settings → Voice.";
       case "unreadable-key":
         return `Couldn’t read the ${name} API key. Unlock the vault on the selected environment or update the key in Settings → Voice. No audio was sent to ${name}.`;
       case "rejected-key":

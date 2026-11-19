@@ -1280,9 +1280,12 @@ export function VoiceSettingsPanel() {
   const cloudEnvironment = environments.find(
     (env) => env.environmentId === pendingCloud?.environmentId,
   );
-  // OpenRouter users without settings access still manage their own model choice.
   const manageLabel =
-    destination.cloudProvider === "openrouter" ? "Manage OpenRouter" : "Manage key";
+    destination.cloudProvider === "openrouter"
+      ? "Manage OpenRouter"
+      : destination.cloudProvider === "openai"
+        ? "Manage OpenAI"
+        : "Manage key";
   const chosenEnvironment = environments.find(
     (environment) => environment.environmentId === destination.environmentId,
   );
@@ -1487,7 +1490,7 @@ export function VoiceSettingsPanel() {
               </Select>
               {destination.cloudProvider &&
                 chosenEnvironment &&
-                (canManageKey || destination.cloudProvider === "openrouter") && (
+                (canManageKey || destination.cloudProvider !== "xai") && (
                   <Tooltip>
                     <TooltipTrigger
                       render={
