@@ -3,8 +3,10 @@ import {
   CloudSpeechError,
   CloudSpeechModel,
   CloudSpeechModelId,
+  DEFAULT_OPENAI_SPEECH_BASE_URL,
   SettingsSecretValue,
   isSecretReference,
+  normalizeOpenAiSpeechBaseUrl,
   type SecretReference,
   type ServerSettingsError,
   type CloudSpeechKeys,
@@ -28,7 +30,7 @@ import { removeSpeechFillerWords } from "./fillerWords.ts";
 import { decodeSpeechPcm, SpeechInvalidAudioError } from "./SpeechService.ts";
 
 const endpoints = {
-  openai: { url: "https://api.openai.com/v1/audio/transcriptions", model: "gpt-transcribe" },
+  openai: { model: "gpt-transcribe" },
   xai: { url: "https://api.x.ai/v1/stt", model: "grok-voice-transcribe-2.0" },
   openrouter: { url: "https://openrouter.ai/api/v1/audio/transcriptions" },
 };
@@ -109,13 +111,15 @@ export class CloudSpeech extends Context.Service<
     readonly models: Effect.Effect<ReadonlyArray<CloudSpeechModel>, CloudSpeechError>;
     readonly setKey: (
       provider: CloudSpeechProvider,
-      key: Redacted.Redacted<string> | SecretReference | null,
+      key: Redacted.Redacted<string> | SecretReference | null | undefined,
+      openaiBaseUrl?: string,
     ) => Effect.Effect<void, ServerSettingsError>;
     readonly transcribe: (
       provider: CloudSpeechProvider,
       pcm: Uint8Array,
       options: SpeechTranscriptionOptions,
       model?: string | undefined,
+      openaiBaseUrl?: string,
     ) => Effect.Effect<string, CloudSpeechError | SpeechInvalidAudioError | ServerSettingsError>;
   }
 >()("t3/speech/CloudSpeech") {}
@@ -126,14 +130,18 @@ export const layer = Layer.effect(
     const settings = yield* ServerSettings.ServerSettingsService;
     const resolver = yield* SecretResolver.SecretResolver;
     const http = yield* HttpClient.HttpClient;
-    const credentials = settings.getSettings.pipe(
-      Effect.map((value) => value.cloudSpeechCredentials),
+    const configuration = settings.getSettings.pipe(
+      Effect.map(({ cloudSpeechCredentials, openaiSpeechBaseUrl }) => ({
+        credentials: cloudSpeechCredentials,
+        openaiBaseUrl: normalizeOpenAiSpeechBaseUrl(openaiSpeechBaseUrl) ?? openaiSpeechBaseUrl,
+      })),
     );
-    const configured = credentials.pipe(
-      Effect.map(({ openai, xai, openrouter }) => ({
+    const configured = configuration.pipe(
+      Effect.map(({ credentials: { openai, xai, openrouter }, openaiBaseUrl }) => ({
         openai: Boolean(openai),
         xai: Boolean(xai),
         openrouter: Boolean(openrouter),
+        openaiBaseUrl,
       })),
     );
     const execute = (request: HttpClientRequest.HttpClientRequest) =>
@@ -170,12 +178,19 @@ export const layer = Layer.effect(
     );
     const setKey = Effect.fn("CloudSpeech.setKey")(function* (
       provider: CloudSpeechProvider,
-      key: Redacted.Redacted<string> | SecretReference | null,
+      key: Redacted.Redacted<string> | SecretReference | null | undefined,
+      openaiBaseUrl?: string,
     ) {
       yield* settings.updateSettings({
-        cloudSpeechCredentials: {
-          [provider]: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
-        },
+        ...(key !== undefined && {
+          cloudSpeechCredentials: {
+            [provider]: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
+          },
+        }),
+        ...(provider === "openai" &&
+          openaiBaseUrl !== undefined && {
+            openaiSpeechBaseUrl: normalizeOpenAiSpeechBaseUrl(openaiBaseUrl) ?? openaiBaseUrl,
+          }),
       });
     });
     const transcribe = Effect.fn("CloudSpeech.transcribe")(
@@ -184,9 +199,15 @@ export const layer = Layer.effect(
         pcm: Uint8Array,
         options: SpeechTranscriptionOptions,
         model?: string,
+        approvedOpenAiBaseUrl = "",
       ) {
-        const source = (yield* credentials)[provider];
+        const initial = yield* configuration;
+        const source = initial.credentials[provider];
         if (!source) return yield* new CloudSpeechError({ provider, reason: "missing-key" });
+        const endpointChanged = () =>
+          new CloudSpeechError({ provider, reason: "endpoint-changed" });
+        if (provider === "openai" && initial.openaiBaseUrl !== approvedOpenAiBaseUrl)
+          return yield* endpointChanged();
         if (provider === "openrouter" && (!model || !isModelId(model)))
           return yield* new CloudSpeechError({ provider, reason: "model-unavailable" });
         const samples = yield* Effect.try({
@@ -208,15 +229,21 @@ export const layer = Layer.effect(
         );
         if (!isApiKey(key)) return yield* unreadable();
         const audio = wave(samples);
-        const request = HttpClientRequest.post(endpoints[provider].url).pipe(
+        const endpoint =
+          provider === "openai"
+            ? `${initial.openaiBaseUrl || DEFAULT_OPENAI_SPEECH_BASE_URL}/audio/transcriptions`
+            : endpoints[provider].url;
+        const request = HttpClientRequest.post(endpoint).pipe(
           HttpClientRequest.bearerToken(Redacted.make(key)),
           provider === "openrouter"
             ? openRouterBody(model!, audio, language)
             : audioBody(provider, audio, language, options),
         );
         const unavailable = () => new CloudSpeechError({ provider, reason: "unavailable" });
-        // A catalog fetch or vault lookup may have outlived the credential it started with.
-        const current = (yield* credentials)[provider];
+        const latest = yield* configuration;
+        if (provider === "openai" && latest.openaiBaseUrl !== approvedOpenAiBaseUrl)
+          return yield* endpointChanged();
+        const current = latest.credentials[provider];
         if (!current || !sameCredential(source, current))
           return yield* new CloudSpeechError({
             provider,

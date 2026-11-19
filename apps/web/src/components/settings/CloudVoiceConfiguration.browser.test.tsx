@@ -150,28 +150,56 @@ it("enables the chosen provider only after a successful setup", async () => {
   );
 });
 
-it("keeps the active provider's grant when editing its key", async () => {
+it("keeps the grant on a key change but confirms a new OpenAI Base URL", async () => {
   chooseAudioDestination({ kind: "cloud", provider: "openai", environmentId: id });
   const grant = window.localStorage.getItem(grantKey);
+  const proxy = "https://voice.example.com/proxy/v1";
   const writes: unknown[] = [];
+  let openaiBaseUrl = "";
   await withVoicePanel(
     (url, request, init) => {
       if (url.pathname === "/api/voice/cloud/keys")
-        return Promise.resolve(Response.json({ openai: true, xai: true }));
+        return Promise.resolve(Response.json({ openai: true, xai: true, openaiBaseUrl }));
       if (url.pathname !== "/api/voice/cloud/openai/key") return null;
-      return new Request(request, init).json().then((body) => {
+      return new Request(request, init).json().then((body: { openaiBaseUrl?: string }) => {
         writes.push(body);
+        openaiBaseUrl = body.openaiBaseUrl ?? openaiBaseUrl;
         return new Response(null, { status: 204 });
       });
     },
     async (screen) => {
-      await screen.getByRole("button", { name: "Manage key" }).click();
+      const manage = screen.getByRole("button", { name: "Manage OpenAI" });
+      await manage.click();
       const dialog = page.getByRole("dialog");
       await dialog.getByLabelText("OpenAI API key", { exact: true }).fill("replacement");
       await userEvent.keyboard("{Enter}");
       await expect.element(dialog).not.toBeInTheDocument();
       expect(writes).toEqual([{ key: "replacement" }]);
       expect(window.localStorage.getItem(grantKey)).toBe(grant);
+
+      await manage.click();
+      const baseUrl = dialog.getByLabelText("Base URL", { exact: true });
+      const save = dialog.getByRole("button", { name: "Save", exact: true });
+      await baseUrl.fill("file:///tmp/endpoint");
+      await expect.element(save).toBeDisabled();
+      await baseUrl.fill(`${proxy}/`);
+      await expect.element(dialog.getByText(`to ${proxy}.`, { exact: false })).toBeVisible();
+      await save.click();
+      await expect.element(dialog).not.toBeInTheDocument();
+      expect(writes.at(-1)).toEqual({ openaiBaseUrl: proxy });
+      const { pending } = JSON.parse(window.localStorage.getItem(grantKey)!);
+      expect(pending.destination.baseUrl).toBe(proxy);
+      expect(window.localStorage.getItem(`${grantKey}:saved:${pending.id}`)).toBe("true");
+
+      await manage.click();
+      await expect.element(baseUrl).toHaveValue(proxy);
+      await baseUrl.fill("");
+      await save.click();
+      await expect.element(dialog).not.toBeInTheDocument();
+      expect(writes.at(-1)).toEqual({ openaiBaseUrl: "" });
+      expect(
+        JSON.parse(window.localStorage.getItem(grantKey)!).pending.destination.baseUrl,
+      ).toBeUndefined();
     },
   );
 });

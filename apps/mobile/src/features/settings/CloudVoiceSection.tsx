@@ -1,6 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { cloudSpeechDisclosure } from "@t3tools/shared/speech";
-import { setCloudSpeechKey } from "@t3tools/client-runtime/voice-input";
+import { saveCloudSpeechSettings } from "@t3tools/client-runtime/voice-input";
 import {
   configuredSecretSources,
   secretRequestReference,
@@ -12,7 +12,9 @@ import {
   CloudSpeechProvider,
   CloudSpeechApiKey,
   CloudSpeechModelId,
+  DEFAULT_OPENAI_SPEECH_BASE_URL,
   isSecretReference,
+  normalizeOpenAiSpeechBaseUrl,
   type CloudSpeechModel,
   type SecretProviderId,
   type SettingsSecretValue,
@@ -186,6 +188,10 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
   const reloadModels = useAtomRefresh(catalogAtom);
   const [draft, setDraft] = useState("");
   const [model, setModel] = useState("");
+  const [baseUrlDraft, setBaseUrlDraft] = useState<string | null>(null);
+  const savedBaseUrl = AsyncResult.isSuccess(keys) ? keys.value?.openaiBaseUrl : undefined;
+  const baseUrl = normalizeOpenAiSpeechBaseUrl(baseUrlDraft ?? savedBaseUrl ?? "");
+  const approvedBaseUrl = active?.provider === "openai" ? (active.baseUrl ?? "") : "";
   const [sourceId, setSourceId] = useState<SecretProviderId | null>(null);
   const sources =
     Constants.expoConfig?.extra?.secretsFeatureEnabled === true &&
@@ -220,6 +226,7 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
     setSourceId(ref?.provider ?? null);
     setDraft(ref?.reference ?? "");
     setModel(provider === "openrouter" ? (activeModel ?? "") : "");
+    setBaseUrlDraft(null);
     setEditing({ provider, enable });
   };
   const reset = () => {
@@ -229,21 +236,26 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
   };
   const changeKey = async (
     provider: CloudSpeechProvider,
-    value: SettingsSecretValue | null,
+    value: SettingsSecretValue | null | undefined,
     chosen?: CloudSpeechModelId,
+    nextBaseUrl?: string,
   ) => {
     if (!connection || !canManage || saving) return;
+    const destinationBaseUrl = provider === "openai" ? baseUrl : undefined;
     const commit =
-      value !== null && (editing?.enable || (chosen !== undefined && chosen !== activeModel))
-        ? pendingCloudVoiceChoice(id, provider, chosen)
+      value !== null &&
+      (editing?.enable ||
+        (chosen !== undefined && chosen !== activeModel) ||
+        (destinationBaseUrl !== undefined && destinationBaseUrl !== approvedBaseUrl))
+        ? pendingCloudVoiceChoice(id, provider, chosen, destinationBaseUrl)
         : null;
     setSaving(true);
     try {
-      await runSpeech(setCloudSpeechKey(connection, provider, value));
+      await runSpeech(saveCloudSpeechSettings(connection, provider, value, nextBaseUrl));
     } catch {
       setSaving(false);
       Dialog.alert(
-        "Could not update the API key",
+        "Could not update dictation settings",
         "Check the environment connection and your settings permissions.",
       );
       return;
@@ -300,18 +312,25 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
                     ? "Update the environment to use this provider"
                     : isActive && routed
                       ? `${activeModel} · Tap to change model${canManage ? " or key" : ""}`
-                      : isActive && key && canManage
-                        ? "Tap to manage key"
-                        : key
-                          ? routed
-                            ? "API key saved · choose a model to use it"
-                            : "API key saved"
-                          : canManage
-                            ? "Add an API key to use this provider"
-                            : "Ask an environment administrator to add an API key"
+                      : provider === "openai" &&
+                          savedBaseUrl !== undefined &&
+                          (canManage || isActive)
+                        ? isActive && savedBaseUrl !== approvedBaseUrl
+                          ? "Base URL changed · tap to confirm"
+                          : "Tap to manage OpenAI dictation"
+                        : isActive && key && canManage
+                          ? "Tap to manage key"
+                          : key
+                            ? routed
+                              ? "API key saved · choose a model to use it"
+                              : "API key saved"
+                            : canManage
+                              ? "Add an API key to use this provider"
+                              : "Ask an environment administrator to add an API key"
                 }
                 onPress={() => {
-                  if (routed) return edit(provider, !isActive);
+                  if (routed || (provider === "openai" && savedBaseUrl !== undefined))
+                    return edit(provider, !isActive);
                   if (!key) return edit(provider, true);
                   if (isActive) {
                     if (canManage) edit(provider, false);
@@ -334,7 +353,10 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
     const label = CLOUD_SPEECH_LABELS[provider];
     const company = CLOUD_SPEECH_PROVIDER_NAMES[provider];
     const routed = provider === "openrouter";
-    const disclosure = cloudSpeechDisclosure(provider, environment.label);
+    const customEndpointSupported = provider === "openai" && savedBaseUrl !== undefined;
+    const baseUrlChanged = customEndpointSupported && baseUrl !== savedBaseUrl;
+    const endpointChanged = customEndpointSupported && baseUrl !== approvedBaseUrl;
+    const disclosure = cloudSpeechDisclosure(provider, environment.label, baseUrl);
     const key = saved[provider];
     const isActive = active?.provider === provider;
     const modelChosen = isModelId(model) && (catalog?.some((entry) => entry.id === model) ?? false);
@@ -348,10 +370,12 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
         original.provider === credential.provider &&
         original.reference === credential.reference
       );
-    const routedReady =
-      modelChosen &&
-      (draft.trim() ? credential !== undefined : Boolean(key)) &&
-      (!isActive || modelChanged || keyChanged);
+    const keyReady = draft.trim() ? credential !== undefined : Boolean(key);
+    const routedReady = modelChosen && keyReady && (!isActive || modelChanged || keyChanged);
+    const openaiReady =
+      baseUrl !== undefined &&
+      (canManage ? keyReady : Boolean(key)) &&
+      (!isActive || endpointChanged || (canManage && (baseUrlChanged || keyChanged)));
     const saveRouted = () => {
       if (!routedReady || !isModelId(model)) return;
       const grantChanges = !isActive || modelChanged;
@@ -363,7 +387,18 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
     };
     const submit = () => {
       if (routed) saveRouted();
-      else if (credential) void changeKey(provider, credential);
+      else if (customEndpointSupported) {
+        if (!openaiReady || saving) return;
+        if (canManage && (keyChanged || baseUrlChanged))
+          return void changeKey(
+            provider,
+            keyChanged ? credential : undefined,
+            undefined,
+            baseUrlChanged ? baseUrl : undefined,
+          );
+        enable(pendingCloudVoiceChoice(id, provider, undefined, baseUrl));
+        onClose();
+      } else if (credential) void changeKey(provider, credential);
     };
     const keyFooter =
       draft && !credential
@@ -372,12 +407,39 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
           ? key && !credential
             ? "Uses the API key saved on this environment. The model choice applies only to this device."
             : `Anyone with dictation access to ${environment.label} can bill this key.`
-          : editing.enable
-            ? `Anyone with dictation access to ${environment.label} can bill this key.`
-            : `Updates the ${company} key on ${environment.label}. Your dictation destination stays the same.`;
+          : customEndpointSupported && key
+            ? "Leave blank to keep the saved key."
+            : editing.enable
+              ? `Anyone with dictation access to ${environment.label} can bill this key.`
+              : `Updates the ${company} key on ${environment.label}. Your dictation destination stays the same.`;
     return (
       <>
         <Text className="px-2 text-sm text-foreground-muted">{disclosure}</Text>
+        {customEndpointSupported && canManage && (
+          <ListSection
+            title="Base URL"
+            footer={
+              baseUrl === undefined
+                ? "Enter an HTTPS API base URL without credentials, a query, or a fragment. Localhost may use HTTP."
+                : "Leave blank for OpenAI. A custom endpoint receives recordings and the saved API key from this environment."
+            }
+          >
+            <View className="px-4 py-3">
+              <TextInput
+                accessibilityLabel="OpenAI Base URL"
+                placeholder={DEFAULT_OPENAI_SPEECH_BASE_URL}
+                value={baseUrlDraft ?? savedBaseUrl}
+                onChangeText={setBaseUrlDraft}
+                editable={!saving}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                keyboardType="url"
+                className="rounded-lg bg-background px-3 py-2 text-foreground"
+              />
+            </View>
+          </ListSection>
+        )}
         {routed ? (
           catalog ? (
             <ModelPicker
@@ -454,7 +516,7 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
             </View>
           </ListSection>
         ) : null}
-        {canManage || routed ? (
+        {canManage || routed || customEndpointSupported ? (
           <ListSection>
             {routed && !key && !canManage ? (
               <ListActionRow
@@ -469,12 +531,20 @@ function CloudChoices({ environment, active, onClose }: Props & { onClose: () =>
                     ? isActive
                       ? "Save"
                       : "Save and enable"
-                    : editing.enable
-                      ? "Save and enable"
-                      : "Save key"
+                    : customEndpointSupported && !canManage
+                      ? `Use ${label}`
+                      : editing.enable
+                        ? "Save and enable"
+                        : customEndpointSupported
+                          ? endpointChanged && !baseUrlChanged && !keyChanged
+                            ? "Confirm destination"
+                            : "Save"
+                          : "Save key"
                 }
                 loading={saving}
-                disabled={routed ? !routedReady : !credential}
+                disabled={
+                  routed ? !routedReady : customEndpointSupported ? !openaiReady : !credential
+                }
                 onPress={submit}
               />
             )}

@@ -8,7 +8,7 @@ import {
 import {
   getCloudSpeechKeys,
   getCloudSpeechModels,
-  setCloudSpeechKey,
+  saveCloudSpeechSettings,
 } from "@t3tools/client-runtime/voice-input";
 import {
   AuthOrchestrationOperateScope,
@@ -17,7 +17,9 @@ import {
   CloudSpeechModelId,
   CLOUD_SPEECH_LABELS,
   CLOUD_SPEECH_PROVIDER_NAMES,
+  DEFAULT_OPENAI_SPEECH_BASE_URL,
   isSecretReference,
+  normalizeOpenAiSpeechBaseUrl,
   type CloudSpeechModel,
   type CloudSpeechProvider,
   type SecretProviderId,
@@ -182,7 +184,17 @@ export function CloudVoiceConfiguration({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [model, setModel] = useState(currentModel ?? "");
-  const saved = AsyncResult.isSuccess(presence) ? presence.value?.[provider] : undefined;
+  const keys = AsyncResult.isSuccess(presence) ? presence.value : null;
+  const saved = keys?.[provider];
+  const savedBaseUrl = provider === "openai" ? keys?.openaiBaseUrl : undefined;
+  const [baseUrlDraft, setBaseUrlDraft] = useState<string | null>(null);
+  const baseUrl = normalizeOpenAiSpeechBaseUrl(baseUrlDraft ?? savedBaseUrl ?? "");
+  const baseUrlChanged = savedBaseUrl !== undefined && baseUrl !== savedBaseUrl;
+  const approvedBaseUrl =
+    grant?.destination.kind === "cloud" && grant.destination.provider === "openai"
+      ? (grant.destination.baseUrl ?? "")
+      : "";
+  const endpointChanged = provider === "openai" && baseUrl !== approvedBaseUrl;
   const existing = environment.serverConfig?.settings?.cloudSpeechCredentials?.[provider];
   const sources =
     isSecretsFeatureEnabled && environment.serverConfig?.secretReferences
@@ -209,8 +221,9 @@ export function CloudVoiceConfiguration({
       reference.reference === credential.reference
     );
   const connected = canUse && prepared !== null;
-  // Fixed providers edit the key only when nothing is saved or the device already uses them.
-  const editingKey = canManage && saved !== undefined && (routed || active || !saved);
+  const editingBaseUrl = canManage && savedBaseUrl !== undefined;
+  const editingKey =
+    canManage && saved !== undefined && (routed || active || !saved || editingBaseUrl);
   const listedModels = AsyncResult.isSuccess(models) ? (models.value?.models ?? null) : null;
   const modelChosen = isModelId(model) && (listedModels?.some((m) => m.id === model) ?? false);
   const keyReady = draft.trim() ? credential !== undefined : Boolean(saved);
@@ -218,19 +231,28 @@ export function CloudVoiceConfiguration({
   const destination = (): CloudDestination =>
     routed && isModelId(model)
       ? { kind: "cloud", provider: "openrouter", environmentId: id, model }
-      : { kind: "cloud", provider: provider as "openai" | "xai", environmentId: id };
+      : provider === "openai"
+        ? { kind: "cloud", provider, environmentId: id, ...(baseUrl && { baseUrl }) }
+        : { kind: "cloud", provider: "xai", environmentId: id };
   const enable = () => chooseAudioDestination(destination());
+  const grantChanges = !active || (routed && modelChanged) || endpointChanged;
   const canSubmit = routed
-    ? modelChosen && keyReady && (!active || modelChanged || keyChanged)
-    : credential !== undefined;
+    ? modelChosen && keyReady && (grantChanges || keyChanged)
+    : provider === "openai" && savedBaseUrl !== undefined
+      ? keyReady && baseUrl !== undefined && (grantChanges || keyChanged || baseUrlChanged)
+      : credential !== undefined;
 
-  const saveKey = async (value: SettingsSecretValue | null, thenEnable: boolean) => {
+  const saveSettings = async (
+    value: SettingsSecretValue | null | undefined,
+    thenEnable: boolean,
+    nextBaseUrl?: string,
+  ) => {
     if (!connected || !canManage || busy) return;
     setError("");
     setBusy(true);
     try {
       const commit = thenEnable ? pendingCloudAudioChoice(destination()) : null;
-      await runEnvironmentSpeech(setCloudSpeechKey(prepared, provider, value));
+      await runEnvironmentSpeech(saveCloudSpeechSettings(prepared, provider, value, nextBaseUrl));
       refresh();
       commit?.();
       close();
@@ -241,17 +263,18 @@ export function CloudVoiceConfiguration({
   };
   const submit = () => {
     if (!canSubmit || busy) return;
-    const grantChanges = !active || modelChanged;
-    if (credential !== undefined && (!routed || keyChanged))
-      return void saveKey(credential, grantChanges);
-    // Model-only changes never write to the environment.
+    const nextKey = keyChanged || (!routed && !editingBaseUrl) ? credential : undefined;
+    if (nextKey !== undefined || baseUrlChanged)
+      return void saveSettings(nextKey, grantChanges, baseUrlChanged ? baseUrl : undefined);
     if (grantChanges) enable();
     close();
   };
 
   const keyField = (
     <>
-      <Label htmlFor="voice-cloud-key">{routed && saved ? "Replace API key" : "API key"}</Label>
+      <Label htmlFor="voice-cloud-key">
+        {(routed || editingBaseUrl) && saved ? "Replace API key" : "API key"}
+      </Label>
       <div className="flex min-w-0 items-start gap-2">
         {sources.length > 0 && (
           <SecretSourceSelect
@@ -300,10 +323,10 @@ export function CloudVoiceConfiguration({
       <p className="text-sm text-muted-foreground">
         {draft.trim() && !credential
           ? (source?.invalidReferenceMessage ?? "Enter an API key, not a URL or secret reference.")
-          : active && !routed
-            ? "Updating the key keeps dictation enabled."
-            : routed && saved
-              ? "Leave blank to keep the saved key."
+          : (routed || editingBaseUrl) && saved
+            ? "Leave blank to keep the saved key."
+            : active && !routed
+              ? "Updating the key keeps dictation enabled."
               : `Anyone with dictation access to ${environment.label} can bill this key.`}
       </p>
     </>
@@ -322,17 +345,17 @@ export function CloudVoiceConfiguration({
             {remove
               ? `Remove the ${company} key?`
               : active
-                ? routed
-                  ? "Manage OpenRouter dictation"
+                ? routed || provider === "openai"
+                  ? `Manage ${company} dictation`
                   : `Manage ${company} key`
                 : `Use ${name} for dictation?`}
           </DialogTitle>
           <DialogDescription>
             {remove
               ? `Everyone using ${name} for dictation on ${environment.label} will lose access.`
-              : active && !routed
+              : active && !routed && provider !== "openai"
                 ? `Anyone with dictation access to ${environment.label} can use this API key.`
-                : cloudSpeechDisclosure(provider, environment.label)}
+                : cloudSpeechDisclosure(provider, environment.label, baseUrl)}
           </DialogDescription>
         </DialogHeader>
         {!remove && (
@@ -399,6 +422,28 @@ export function CloudVoiceConfiguration({
                   submit();
                 }}
               >
+                {editingBaseUrl && (
+                  <div className="grid gap-2">
+                    <Label htmlFor={`${formId}-base-url`}>Base URL</Label>
+                    <Input
+                      id={`${formId}-base-url`}
+                      inputMode="url"
+                      placeholder={DEFAULT_OPENAI_SPEECH_BASE_URL}
+                      value={baseUrlDraft ?? savedBaseUrl}
+                      onChange={(event) => setBaseUrlDraft(event.target.value)}
+                      disabled={busy}
+                      aria-invalid={baseUrl === undefined}
+                      aria-describedby={`${formId}-base-url-hint`}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <p id={`${formId}-base-url-hint`} className="text-sm text-muted-foreground">
+                      {baseUrl === undefined
+                        ? "Enter an HTTPS API base URL without credentials, a query, or a fragment. Localhost may use HTTP."
+                        : "Leave blank for OpenAI. A custom endpoint receives recordings and the saved API key from this environment."}
+                    </p>
+                  </div>
+                )}
                 {keyField}
               </form>
             ) : !saved ? (
@@ -439,7 +484,7 @@ export function CloudVoiceConfiguration({
                 size="sm"
                 variant="destructive"
                 disabled={busy}
-                onClick={() => void saveKey(null, false)}
+                onClick={() => void saveSettings(null, false)}
               >
                 Remove key
               </Button>
@@ -450,10 +495,16 @@ export function CloudVoiceConfiguration({
                 </Button>
               ) : null
             ) : editingKey ? (
-              <Button type="submit" form={formId} size="sm" disabled={busy || !credential}>
-                {active ? "Save key" : "Save and enable"}
+              <Button type="submit" form={formId} size="sm" disabled={busy || !canSubmit}>
+                {active
+                  ? editingBaseUrl
+                    ? endpointChanged && !baseUrlChanged && !keyChanged
+                      ? "Confirm destination"
+                      : "Save"
+                    : "Save key"
+                  : "Save and enable"}
               </Button>
-            ) : saved && !active ? (
+            ) : saved && grantChanges ? (
               <Button
                 type="button"
                 size="sm"

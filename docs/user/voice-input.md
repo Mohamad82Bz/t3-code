@@ -51,6 +51,14 @@ subscription is needed. Switch back to **This device** on mobile or **Off** on
 web and desktop to stop sharing. Removing the key stops that provider for everyone
 on the environment.
 
+For **OpenAI**, open **Manage OpenAI** to use an OpenAI-compatible **Base URL**,
+such as `https://voice.example.com/v1`. Enter the API root, not the full
+`/audio/transcriptions` endpoint. The service must accept the `gpt-transcribe`
+model. Use the API key for that service: it receives both the key and your
+recordings. Leave the Base URL blank to return to OpenAI. A URL change applies
+to the environment, and other devices must confirm the new destination before
+they can send another recording.
+
 **OpenRouter** works the same way but has no default model: pick one from its live
 speech-to-text catalog when you enable it, or later under **Manage OpenRouter**.
 The model choice is yours alone and needs no settings access, so anyone with

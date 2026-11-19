@@ -148,16 +148,16 @@ effectIt.effect(
       const cloud = Layer.mock(CloudSpeech.CloudSpeech)({
         configured: Effect.sync(() => ({ openai: stored, xai: false })),
         models: Effect.succeed([{ id: "acme/transcribe-1", name: "Acme Transcribe" }]),
-        setKey: (provider, key) =>
+        setKey: (provider, key, baseUrl) =>
           Effect.sync(() => {
-            save(provider, key);
+            save(provider, key, baseUrl);
             stored =
               provider === "openai" &&
               Redacted.isRedacted(key) &&
               Redacted.value(key) === "fixture";
           }),
-        transcribe: (provider, _pcm, _options, model) => {
-          transcribe(provider, model);
+        transcribe: (provider, _pcm, _options, model, baseUrl) => {
+          transcribe(provider, model, baseUrl);
           return Effect.fail(new CloudSpeechError({ provider, reason: "rejected-key" }));
         },
       });
@@ -222,21 +222,42 @@ effectIt.effect(
           body: JSON.stringify({ key }),
         });
       expect((yield* setReference(reference)).status).toBe(204);
-      expect(save).toHaveBeenLastCalledWith("xai", reference);
+      expect(save).toHaveBeenLastCalledWith("xai", reference, undefined);
       expect((yield* setReference(reference.reference)).status).toBe(400);
+      const baseUrl = "https://voice.example.com/proxy/v1";
+      const setBaseUrl = (value: string, provider = "openai") =>
+        call(`${provider}/key`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ openaiBaseUrl: value }),
+        });
+      for (const invalid of [
+        "http://voice.example.com/v1",
+        "https://user:password@voice.example.com/v1",
+        "https://voice.example.com/v1?token=secret",
+        "file:///tmp/voice",
+      ]) {
+        expect((yield* setBaseUrl(invalid)).status).toBe(400);
+      }
+      expect((yield* setBaseUrl(baseUrl, "xai")).status).toBe(400);
       expect(save).toHaveBeenCalledTimes(2);
-      const failed = yield* call("openai/transcribe", {
-        method: "POST",
-        headers: { "content-type": "application/octet-stream" },
-        body: encodeSpeechPcmRequest(new Uint8Array(4), DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS),
-      });
+      expect((yield* setBaseUrl(baseUrl)).status).toBe(204);
+      expect(save).toHaveBeenLastCalledWith("openai", undefined, baseUrl);
+      const failed = yield* call(
+        `openai/transcribe?${new URLSearchParams({ openaiBaseUrl: baseUrl })}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/octet-stream" },
+          body: encodeSpeechPcmRequest(new Uint8Array(4), DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS),
+        },
+      );
       expect(failed.status).toBe(422);
       expect(yield* Effect.promise(() => failed.json())).toEqual({
         _tag: "CloudSpeechError",
         provider: "openai",
         reason: "rejected-key",
       });
-      expect(transcribe).toHaveBeenLastCalledWith("openai", undefined);
+      expect(transcribe).toHaveBeenLastCalledWith("openai", undefined, baseUrl);
       const catalog = yield* call("openrouter/models");
       expect(yield* Effect.promise(() => catalog.json())).toEqual({
         models: [{ id: "acme/transcribe-1", name: "Acme Transcribe" }],
@@ -252,7 +273,7 @@ effectIt.effect(
       expect((yield* call("openrouter/transcribe?model=acme%2Ftranscribe-1", audio)).status).toBe(
         422,
       );
-      expect(transcribe).toHaveBeenLastCalledWith("openrouter", "acme/transcribe-1");
+      expect(transcribe).toHaveBeenLastCalledWith("openrouter", "acme/transcribe-1", undefined);
       // Naming a path on the environment needs filesystem access, not only settings access.
       const link = yield* Effect.promise(() =>
         handler(

@@ -49,16 +49,20 @@ function cloudVoiceDestination(
   environmentId: EnvironmentId,
   provider: CloudSpeechProvider,
   model?: CloudSpeechModelId,
+  baseUrl?: string,
 ): CloudDestination | null {
   if (provider === "openrouter")
     return model ? { kind: "cloud", environmentId, provider, model } : null;
-  return { kind: "cloud", environmentId, provider };
+  return provider === "openai"
+    ? { kind: "cloud", environmentId, provider, ...(baseUrl && { baseUrl }) }
+    : { kind: "cloud", environmentId, provider };
 }
 
 export function chooseVoiceDestination(
   environmentId: EnvironmentId | null,
   provider?: CloudSpeechProvider,
   model?: CloudSpeechModelId,
+  baseUrl?: string,
 ) {
   choiceRevision++;
   // A failed change must not leave the old destination armed in this session.
@@ -67,7 +71,7 @@ export function chooseVoiceDestination(
     environmentId === null
       ? null
       : provider
-        ? cloudVoiceDestination(environmentId, provider, model)
+        ? cloudVoiceDestination(environmentId, provider, model, baseUrl)
         : { kind: "environment", environmentId };
   const grant: VoiceGrant | null = destination && { id: uuidv4(), destination };
   writeVoiceGrant(grant);
@@ -78,10 +82,11 @@ export function pendingCloudVoiceChoice(
   id: EnvironmentId,
   provider: CloudSpeechProvider,
   model?: CloudSpeechModelId,
+  baseUrl?: string,
 ) {
   const revision = ++choiceRevision;
   return () => {
-    if (revision === choiceRevision) chooseVoiceDestination(id, provider, model);
+    if (revision === choiceRevision) chooseVoiceDestination(id, provider, model, baseUrl);
   };
 }
 
@@ -142,11 +147,12 @@ function environmentTranscriber(
 ) {
   const provider = cloud?.provider;
   const model = cloud?.provider === "openrouter" ? cloud.model : undefined;
+  const baseUrl = cloud?.provider === "openai" ? cloud.baseUrl : undefined;
   return createEnvironmentTranscriber({
     canSend,
     prepare: async (signal) => {
       if (provider) {
-        await runSpeech(requireCloudSpeechKey(prepared, provider), signal, canSend);
+        await runSpeech(requireCloudSpeechKey(prepared, provider, baseUrl), signal, canSend);
         return "auto";
       }
       const status = await runSpeech(getEnvironmentSpeechStatus(prepared), signal, canSend);
@@ -187,6 +193,7 @@ function environmentTranscriber(
                 DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
                 canSend,
                 model,
+                baseUrl,
               )
             : transcribeEnvironmentPcm(
                 prepared,

@@ -38,18 +38,32 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
         ),
       ),
     );
-    const transcribe = (pcm = new Uint8Array(new Float32Array([0, 0.5]).buffer)) =>
+    const transcribe = (
+      pcm = new Uint8Array(new Float32Array([0, 0.5]).buffer),
+      baseUrl?: string,
+    ) =>
       service
-        .transcribe(provider, pcm, {
-          ...DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
-          speechLanguage: "en",
-          speechCustomWords: [{ term: "T3 Code", aliases: [] }],
-        })
+        .transcribe(
+          provider,
+          pcm,
+          {
+            ...DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
+            speechLanguage: "en",
+            speechCustomWords: [{ term: "T3 Code", aliases: [] }],
+          },
+          undefined,
+          baseUrl,
+        )
         .pipe(Effect.provideService(FetchHttpClient.Fetch, upstream));
     yield* service.setKey(provider === "openai" ? "xai" : "openai", Redacted.make("other"));
     expect((yield* Effect.flip(transcribe()))._tag).toBe("CloudSpeechError");
     yield* service.setKey(provider, Redacted.make("chosen"));
-    expect(yield* service.configured).toEqual({ openai: true, xai: true, openrouter: false });
+    expect(yield* service.configured).toEqual({
+      openai: true,
+      xai: true,
+      openrouter: false,
+      openaiBaseUrl: "",
+    });
     yield* Effect.flip(transcribe(new Uint8Array(3)));
     expect(upstream).not.toHaveBeenCalled();
     expect(yield* transcribe()).toBe("hello");
@@ -93,6 +107,26 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
       reason: "unreadable-key",
     });
     expect(upstream).toHaveBeenCalledTimes(3);
+
+    const baseUrl = "http://127.0.0.1:8317/proxy/v1";
+    if (provider === "openai") {
+      yield* service.setKey(provider, Redacted.make("proxy-key"), `${baseUrl}/`);
+      expect(yield* service.configured).toMatchObject({ openai: true, openaiBaseUrl: baseUrl });
+      expect(yield* Effect.flip(transcribe())).toMatchObject({ reason: "endpoint-changed" });
+      expect(upstream).toHaveBeenCalledTimes(3);
+      expect(yield* transcribe(undefined, baseUrl)).toBe("hello");
+      const [proxyUrl, proxyInit] = upstream.mock.calls[3]!;
+      expect(String(proxyUrl)).toBe(`${baseUrl}/audio/transcriptions`);
+      expect(new Headers(proxyInit?.headers).get("authorization")).toBe("Bearer proxy-key");
+      expect(proxyInit?.redirect).toBe("error");
+      yield* service.setKey(provider, undefined, "");
+      expect(yield* Effect.flip(transcribe(undefined, baseUrl))).toMatchObject({
+        reason: "endpoint-changed",
+      });
+      expect(upstream).toHaveBeenCalledTimes(4);
+      expect(yield* transcribe()).toBe("hello");
+      expect(String(upstream.mock.calls[4]?.[0])).toBe(url.toString());
+    }
   }),
 );
 

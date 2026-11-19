@@ -59,6 +59,7 @@ import {
   CloudSpeechModelId,
   CloudSpeechModels,
   CloudSpeechProvider,
+  OpenAiSpeechBaseUrl,
   EnvironmentSpeechAccelerationRequest,
   EnvironmentSpeechModelLinkRequest,
   EnvironmentSpeechModelRequest,
@@ -853,12 +854,15 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
       headers: OptionalBearerHeaders,
       params: Schema.Struct({ provider: CloudSpeechProvider }),
       payload: Schema.Struct({
-        key: Schema.NullOr(
-          Schema.Union([Schema.RedactedFromValue(CloudSpeechApiKey), SecretReference]),
+        key: Schema.optionalKey(
+          Schema.NullOr(
+            Schema.Union([Schema.RedactedFromValue(CloudSpeechApiKey), SecretReference]),
+          ),
         ),
+        openaiBaseUrl: Schema.optionalKey(OpenAiSpeechBaseUrl),
       }),
       success: HttpApiSchema.NoContent,
-      error: EnvironmentScopedOperationErrors,
+      error: [...EnvironmentScopedOperationErrors, EnvironmentRequestInvalidError],
     }).middleware(EnvironmentAuthenticatedAuth),
   )
   .add(
@@ -873,7 +877,10 @@ export class EnvironmentVoiceHttpApi extends HttpApiGroup.make("voice")
     HttpApiEndpoint.post("transcribeCloud", "/api/voice/cloud/:provider/transcribe", {
       headers: OptionalBearerHeaders,
       params: Schema.Struct({ provider: CloudSpeechProvider }),
-      query: Schema.Struct({ model: Schema.optionalKey(CloudSpeechModelId) }),
+      query: Schema.Struct({
+        model: Schema.optionalKey(CloudSpeechModelId),
+        openaiBaseUrl: Schema.optionalKey(OpenAiSpeechBaseUrl),
+      }),
       payload: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
       success: EnvironmentSpeechTranscriptionResult,
       error: [

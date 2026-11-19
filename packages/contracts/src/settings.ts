@@ -56,6 +56,7 @@ import {
 import { PullRequestMergeMethod } from "./pullRequest.ts";
 import {
   CloudSpeechModelId,
+  OpenAiSpeechBaseUrl,
   SpeechAcceleration,
   SpeechCorrectionCue,
   SpeechCustomWords,
@@ -399,14 +400,20 @@ export type VoiceMicrophoneEntry = typeof VoiceMicrophoneEntry.Type;
 
 /**
  * Where this device sends microphone audio. A cloud grant names the forwarding environment and
- * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default.
+ * the provider, including any custom OpenAI endpoint or the exact OpenRouter model.
  */
 export const VoiceTranscriptionDestination = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("environment"), environmentId: EnvironmentId }),
   Schema.Struct({
     kind: Schema.Literal("cloud"),
     environmentId: EnvironmentId,
-    provider: Schema.Literals(["openai", "xai"]),
+    provider: Schema.Literal("openai"),
+    baseUrl: Schema.optionalKey(OpenAiSpeechBaseUrl),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("cloud"),
+    environmentId: EnvironmentId,
+    provider: Schema.Literal("xai"),
   }),
   Schema.Struct({
     kind: Schema.Literal("cloud"),
@@ -1477,6 +1484,7 @@ export const ServerSettings = Schema.Struct({
   cloudSpeechCredentials: CloudSpeechCredentials.pipe(
     Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
   ),
+  openaiSpeechBaseUrl: OpenAiSpeechBaseUrl.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
   ),
@@ -1932,6 +1940,7 @@ export const ServerSettingsPatch = Schema.Struct({
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
   requireConnectDeviceApproval: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
+  openaiSpeechBaseUrl: Schema.optionalKey(OpenAiSpeechBaseUrl),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({
       openai: Schema.optionalKey(SettingsSecretValue),

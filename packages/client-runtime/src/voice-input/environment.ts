@@ -92,24 +92,31 @@ export const getCloudSpeechModels = (prepared: PreparedConnection) =>
 export const requireCloudSpeechKey = (
   prepared: PreparedConnection,
   provider: CloudSpeechProvider,
+  openaiBaseUrl = "",
 ) =>
   getCloudSpeechKeys(prepared).pipe(
-    Effect.flatMap((keys) =>
-      keys[provider]
-        ? Effect.void
-        : Effect.fail(
+    Effect.flatMap((keys) => {
+      const reason = !keys[provider]
+        ? "missing-key"
+        : provider === "openai" && (keys.openaiBaseUrl ?? "") !== openaiBaseUrl
+          ? "endpoint-changed"
+          : null;
+      return reason
+        ? Effect.fail(
             new VoiceTranscriptionError({
               code: "unavailable",
-              message: new CloudSpeechError({ provider, reason: "missing-key" }).message,
+              message: new CloudSpeechError({ provider, reason }).message,
             }),
-          ),
-    ),
+          )
+        : Effect.void;
+    }),
   );
 
-export const setCloudSpeechKey = (
+export const saveCloudSpeechSettings = (
   prepared: PreparedConnection,
   provider: CloudSpeechProvider,
-  key: SettingsSecretValue | null,
+  key: SettingsSecretValue | null | undefined,
+  openaiBaseUrl?: string,
 ) =>
   request({
     group: "voice",
@@ -120,7 +127,10 @@ export const setCloudSpeechKey = (
       client.setCloudKey({
         headers,
         params: { provider },
-        payload: { key: typeof key === "string" ? Redacted.make(key) : key },
+        payload: {
+          ...(key !== undefined && { key: typeof key === "string" ? Redacted.make(key) : key }),
+          ...(openaiBaseUrl !== undefined && { openaiBaseUrl }),
+        },
       }),
   });
 
@@ -131,8 +141,12 @@ export const transcribeCloudPcm = (
   options: SpeechTranscriptionOptions,
   canSend: () => boolean,
   model?: CloudSpeechModelId,
+  openaiBaseUrl?: string,
 ) => {
-  const query = model === undefined ? {} : { model };
+  const query = {
+    ...(model !== undefined && { model }),
+    ...(openaiBaseUrl && { openaiBaseUrl }),
+  };
   return request({
     group: "voice",
     prepared,
