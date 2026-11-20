@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import { useSidebarThreadSpectators } from "../../state/threadPresence";
@@ -11,6 +12,7 @@ export function SidebarThreadSpectators({
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const gt = useGT();
   const spectators = useSidebarThreadSpectators(environmentId, threadId);
   if (spectators.length === 0) return null;
   const names = spectators.map((spectator) => spectator.label).join(", ");
@@ -20,7 +22,7 @@ export function SidebarThreadSpectators({
         render={
           <span
             tabIndex={0}
-            aria-label={`Viewing this session: ${names}`}
+            aria-label={gt("Viewing this session: {names}", { names })}
             className="inline-flex max-w-40 shrink-0 items-center gap-1 text-3xs text-muted-foreground"
           />
         }
@@ -37,9 +39,7 @@ export function SidebarThreadSpectators({
         ))}
         {spectators.length > 2 ? <span>+{spectators.length - 2}</span> : null}
       </TooltipTrigger>
-      <TooltipPopup>
-        {names} {spectators.length === 1 ? "is" : "are"} viewing this session
-      </TooltipPopup>
+      <TooltipPopup>{gt("Viewing this session: {names}", { names })}</TooltipPopup>
     </Tooltip>
   );
 }

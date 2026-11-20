@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { FileDiff } from "@pierre/diffs/react";
 import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
 
@@ -15,9 +16,11 @@ export function ToolCallDiff({
 }: {
   readonly item: Extract<OrchestrationV2TurnItem, { type: "file_change" }>;
 }) {
+  const gt = useGT();
   const { resolvedTheme } = useTheme();
   const patch = toolCallDiff(item);
-  if (!patch) return <p className="text-muted-foreground">No diff available for this tool call.</p>;
+  if (!patch)
+    return <p className="text-muted-foreground">{gt("No diff available for this tool call.")}</p>;
   if (patch.kind === "unavailable") return <p className="text-muted-foreground">{patch.reason}</p>;
   const raw = (
     <pre className="p-2 font-mono text-xs whitespace-pre">
@@ -25,7 +28,7 @@ export function ToolCallDiff({
     </pre>
   );
   return (
-    <ToolCodeSurface label={`Diff for ${item.fileName}`}>
+    <ToolCodeSurface label={gt("Diff for {file}", { file: item.fileName })}>
       <RenderErrorBoundary fallback={raw}>
         {patch.kind === "raw" ? (
           raw

@@ -129,6 +129,12 @@ describe("storage cleanup settings", () => {
   });
 });
 
+describe("ClientSettings terminal close confirmation", () => {
+  it("keeps confirmation enabled for settings without a saved preference", () => {
+    expect(decodeClientSettings({}).confirmTerminalClose).toBe(true);
+  });
+});
+
 describe("ServerSettings usage price overrides", () => {
   const prices = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
 
@@ -323,6 +329,25 @@ describe("ClientSettings notifications", () => {
     expect(decodeClientSettings({}).inAppNotificationsEnabled).toBe(false);
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("inAppNotificationsEnabled");
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("notificationMode");
+  });
+});
+
+describe("ClientSettings dictation", () => {
+  it("provides the personal Qwen defaults and validates patches", () => {
+    expect(decodeClientSettings({})).toMatchObject({
+      dictationEnabled: true,
+      dictationShortcut: "ctrl+shift+d",
+      dictationActivationMode: "toggle",
+      dictationLiveMode: true,
+      dictationPunctuation: false,
+      dictationLanguage: "English",
+      dictationContext: "",
+    });
+    expect(decodeClientSettingsPatch({ dictationActivationMode: "hold" })).toEqual({
+      dictationActivationMode: "hold",
+    });
+    expect(() => decodeClientSettingsPatch({ dictationContext: "x".repeat(1001) })).toThrow();
+    expect(() => decodeClientSettingsPatch({ dictationLanguage: "French" })).toThrow();
   });
 });
 

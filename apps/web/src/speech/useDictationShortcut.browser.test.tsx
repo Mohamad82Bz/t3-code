@@ -1,11 +1,14 @@
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { createRef, type RefObject } from "react";
 import { expect, it, vi } from "vite-plus/test";
-import { render } from "../../test/render";
+import type { DesktopDictationShortcutEvent } from "@t3tools/contracts";
+import { act, render, stubGlobal } from "../../test/render";
 import { useDictationShortcut, type DictationKeyHandlers } from "./useDictationShortcut";
 
 const settings = vi.hoisted(() => ({ mode: "hold" as "hold" | "auto" | "toggle" }));
-vi.mock("../hooks/useSettings", () => ({ useClientSettings: () => settings.mode }));
+vi.mock("../hooks/useSettings", () => ({
+  useClientSettings: () => ({ voiceShortcutMode: settings.mode, dictationActivationMode: "hold" }),
+}));
 
 type ShortcutInput = Parameters<typeof useDictationShortcut>[0];
 
@@ -53,6 +56,44 @@ function actions(available: boolean, mode: typeof settings.mode = "hold") {
     cancel: vi.fn(),
   };
 }
+
+it("routes the global hold shortcut to only one editor and waits for startup before stopping", async () => {
+  const listeners = new Set<(event: DesktopDictationShortcutEvent) => void>();
+  using _bridge = stubGlobal("desktopBridge", {
+    onDictationShortcut: (listener: (event: DesktopDictationShortcutEvent) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  });
+  const first = actions(true);
+  const second = actions(true);
+  let finishStart!: () => void;
+  const startup = new Promise<void>((resolve) => {
+    finishStart = resolve;
+  });
+  first.start.mockReturnValue(startup);
+  await using _screen = await render(
+    <>
+      <Probe speech={first} />
+      <Probe speech={second} />
+    </>,
+  );
+  await act(() => {
+    for (const listener of listeners) listener({ type: "down" });
+  });
+  expect(first.start).toHaveBeenCalledOnce();
+  expect(second.start).not.toHaveBeenCalled();
+  await act(() => {
+    for (const listener of listeners) listener({ type: "up" });
+  });
+  expect(first.stop).not.toHaveBeenCalled();
+  await act(async () => {
+    finishStart();
+    await startup;
+  });
+  expect(first.stop).toHaveBeenCalledOnce();
+  expect(second.stop).not.toHaveBeenCalled();
+});
 
 it("leaves the browser shortcut alone when dictation is off", async () => {
   const speech = actions(false);

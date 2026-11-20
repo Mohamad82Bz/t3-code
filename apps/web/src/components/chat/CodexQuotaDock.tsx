@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import { refreshUsageLimits } from "@t3tools/client-runtime/state/usage";
 import { type EnvironmentId, type UsageLimitSourceSnapshot } from "@t3tools/contracts";
@@ -27,6 +28,7 @@ const quotaSourcesAtom = Atom.family((environmentId: EnvironmentId) =>
 );
 
 export function CodexQuotaDock({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const gt = useGT();
   const canvas = useChatCanvas();
   const snapshots = useAtomValue(quotaSourcesAtom(environmentId));
   const refresh = useAtomCommand(serverEnvironment.refreshProviders, { reportFailure: false });
@@ -60,8 +62,8 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not refresh Codex quotas",
-          description: "Showing the last reading.",
+          title: gt("Could not refresh Codex quotas"),
+          description: gt("Showing the last reading."),
         }),
       );
     }
@@ -74,14 +76,14 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
     >
       <div className="flex items-center gap-1.5 ps-1">
         <OpenAI className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="me-auto text-xs font-medium text-foreground">Codex quotas</span>
+        <span className="me-auto text-xs font-medium text-foreground">{gt("Codex quotas")}</span>
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 variant="ghost-muted"
                 size="icon-micro"
-                aria-label="Refresh Codex quotas"
+                aria-label={gt("Refresh Codex quotas")}
                 disabled={refreshing}
                 onClick={() => void refreshQuotas()}
               />
@@ -89,7 +91,7 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
           >
             {refreshing ? <span aria-hidden>…</span> : <RefreshCwIcon aria-hidden />}
           </TooltipTrigger>
-          <TooltipPopup>Refresh Codex quotas</TooltipPopup>
+          <TooltipPopup>{gt("Refresh Codex quotas")}</TooltipPopup>
         </Tooltip>
         {dock.inline ? (
           <Tooltip>
@@ -98,14 +100,14 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
                 <Button
                   variant="ghost-muted"
                   size="icon-micro"
-                  aria-label="Collapse Codex quotas"
+                  aria-label={gt("Collapse Codex quotas")}
                   onClick={() => setCollapsed(true)}
                 />
               }
             >
               <ChevronDownIcon aria-hidden />
             </TooltipTrigger>
-            <TooltipPopup>Collapse Codex quotas</TooltipPopup>
+            <TooltipPopup>{gt("Collapse Codex quotas")}</TooltipPopup>
           </Tooltip>
         ) : null}
       </div>
@@ -119,7 +121,7 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
               <h3 className="truncate px-1 text-2xs text-muted-foreground">{source.label}</h3>
             ) : null}
             <p className="px-1 text-2xs text-muted-foreground">
-              Session / weekly left · session reset
+              {gt("Session / weekly left · session reset")}
             </p>
             {source.accounts.map((account, index) => (
               <div
@@ -150,7 +152,7 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
   );
   return (
     <aside
-      aria-label="Codex account quota dock"
+      aria-label={gt("Codex account quota dock")}
       className="absolute bottom-3 left-3 z-20 hidden sm:block"
     >
       {dock.inline && !collapsed ? (
@@ -165,7 +167,7 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
           variant="outline"
           size="xs"
           onClick={() => setCollapsed(false)}
-          aria-label="Expand Codex quotas"
+          aria-label={gt("Expand Codex quotas")}
         >
           <OpenAI aria-hidden />
           Codex
@@ -175,7 +177,11 @@ export function CodexQuotaDock({ environmentId }: { readonly environmentId: Envi
         <Popover>
           <PopoverTrigger
             render={
-              <Button variant="outline" size="icon-sm" aria-label="Show Codex account quotas" />
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={gt("Show Codex account quotas")}
+              />
             }
           >
             <OpenAI aria-hidden />

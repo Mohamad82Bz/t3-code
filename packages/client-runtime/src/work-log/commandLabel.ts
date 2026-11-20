@@ -1381,27 +1381,35 @@ function withoutShellWrapper(command: string): string {
   const split = splitFirstShellCommand(trimmed);
   if (split.remainingCommand !== null) return trimmed;
   const tokens = tokenizeShellCommand(trimmed);
-  const program = tokens?.[0]
-    ?.split(/[\\/]/u)
-    .at(-1)
-    ?.replace(/\.exe$/iu, "");
-  if (!tokens || !program) return trimmed;
-  if (program.toLowerCase() === "powershell" || program.toLowerCase() === "pwsh") {
-    let index = 1;
-    for (; index < tokens.length; index += 1) {
-      const option = tokens[index]!.toLowerCase();
-      if (option === "-command" || option === "-c") break;
-      if (POWERSHELL_FLAGS.has(option)) continue;
-      if (!POWERSHELL_OPTIONS_WITH_VALUE.has(option)) return trimmed;
-      index += 1;
-    }
-    return index === tokens.length - 2 ? tokens[index + 1]?.trim() || trimmed : trimmed;
-  }
-  if (!SHELL_PROGRAMS.has(program)) return trimmed;
-  const scriptIndex = shellCommandArgumentIndex(tokens, 1);
+  const executable = tokens?.[0]?.split(/[\\/]/u).at(-1);
+  const program = executable?.replace(/\.exe$/iu, "");
+  if (!tokens || !executable || !program) return trimmed;
+  const scriptIndex = SHELL_PROGRAMS.has(program)
+    ? shellCommandArgumentIndex(tokens, 1)
+    : WINDOWS_SHELL_PROGRAMS.has(executable.toLowerCase())
+      ? windowsShellScriptIndex(program.toLowerCase(), tokens)
+      : null;
   // Positional arguments can affect the script; keep those invocations intact.
   if (scriptIndex === null || scriptIndex !== tokens.length - 1) return trimmed;
   return tokens[scriptIndex]?.trim() || trimmed;
+}
+
+function windowsShellScriptIndex(shell: string, tokens: ReadonlyArray<string>): number | null {
+  for (let index = 1; index < tokens.length; index += 1) {
+    const option = tokens[index]!.toLowerCase();
+    if (shell === "cmd") {
+      if (option === "/c") return index + 1;
+      if (!option.startsWith("/")) return null;
+      continue;
+    }
+    if (option === "-command" || option === "-c") return index + 1;
+    if (POWERSHELL_OPTIONS_WITH_VALUE.has(option)) {
+      index += 1;
+      continue;
+    }
+    if (!POWERSHELL_FLAGS.has(option)) return null;
+  }
+  return null;
 }
 
 const POWERSHELL_PROGRAMS = new Set(["powershell", "pwsh"]);

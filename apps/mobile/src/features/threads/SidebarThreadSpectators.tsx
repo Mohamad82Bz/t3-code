@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { View } from "react-native";
 
@@ -12,13 +13,16 @@ export function SidebarThreadSpectators({
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const gt = useGT();
   const spectators = useSidebarThreadSpectators(environmentId, threadId);
   const first = spectators[0];
   if (first === undefined) return null;
   return (
     <View
       accessible
-      accessibilityLabel={`Viewing this session: ${spectators.map((spectator) => spectator.label).join(", ")}`}
+      accessibilityLabel={gt("Viewing this session: {names}", {
+        names: spectators.map((spectator) => spectator.label).join(", "),
+      })}
       className="max-w-28 shrink-0 flex-row items-center gap-1 rounded border border-border bg-foreground/5 px-1"
     >
       <EnvironmentMachineSymbol

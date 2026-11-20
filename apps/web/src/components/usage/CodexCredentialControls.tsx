@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   type EnvironmentId,
@@ -5,7 +6,8 @@ import {
   type UsageLimitSourceId,
   type UsageLimitSourceAccountActionInput,
 } from "@t3tools/contracts";
-import { formatResetsIn, remainingPercent } from "@t3tools/shared/usageLimits";
+import { remainingPercent } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { PlayIcon, PowerOffIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -21,6 +23,7 @@ export function useCodexCredentialAction(
   environmentId: EnvironmentId,
   sourceId: UsageLimitSourceId,
 ) {
+  const gt = useGT();
   const command = serverEnvironment.usageLimitSourceAccountAction;
   const permitted = useAtomValue(command.permissionAtom(environmentId));
   const run = useAtomCommand(command, { reportFailure: false });
@@ -40,13 +43,15 @@ export function useCodexCredentialAction(
     toastManager.add(
       stackedThreadToast({
         type: result._tag === "Success" ? "success" : "error",
-        title: account.identifier ? `Codex account ${account.identifier}` : "Codex credential",
+        title: account.identifier
+          ? gt("Codex account {account}", { account: account.identifier })
+          : gt("Codex credential"),
         description:
           result._tag === "Success"
             ? result.value.message
             : "error" in result.cause && result.cause.error instanceof Error
               ? result.cause.error.message
-              : "Could not update the credential. Refresh to check its state.",
+              : gt("Could not update the credential. Refresh to check its state."),
       }),
     );
   };
@@ -64,6 +69,7 @@ export function CompactCodexCredentialCard({
   readonly sourceId: UsageLimitSourceId;
   readonly now: number;
 }) {
+  const gt = useGT();
   const { busy, available, act } = useCodexCredentialAction(account, environmentId, sourceId);
   const session = account.usageLimits.windows.find((window) => window.kind === "session");
   const weekly = account.usageLimits.windows.find((window) => window.kind === "weekly");
@@ -87,7 +93,11 @@ export function CompactCodexCredentialCard({
               <button
                 type="button"
                 disabled={Boolean(busy) || !available}
-                aria-label={`${summary} Click to ${account.disabled ? "enable" : "disable"}.`}
+                aria-label={
+                  account.disabled
+                    ? gt("{summary} Click to enable.", { summary })
+                    : gt("{summary} Click to disable.", { summary })
+                }
                 aria-pressed={!account.disabled}
                 onClick={() =>
                   void act({ type: "toggle", expectedDisabled: account.disabled ?? false })
@@ -120,15 +130,21 @@ export function CompactCodexCredentialCard({
           <TooltipPopup side="right">
             <div className="flex max-w-64 flex-col gap-1">
               <span>{summary}</span>
-              {resetsIn ? <span>Session {resetsIn}</span> : null}
+              {resetsIn ? <span>{gt("Session {resetsIn}", { resetsIn })}</span> : null}
               {weekly ? (
-                <span>Weekly {formatResetsIn(weekly, now) ?? "reset time unavailable"}</span>
+                <span>
+                  {gt("Weekly {resetsIn}", {
+                    resetsIn: formatResetsIn(weekly, now) ?? gt("Reset time unavailable"),
+                  })}
+                </span>
               ) : null}
-              {account.commented ? <span>Has a CPA comment</span> : null}
+              {account.commented ? <span>{gt("Has comment")}</span> : null}
               <span>
                 {available
-                  ? `Click the card to ${account.disabled ? "enable" : "disable"} this credential.`
-                  : "Credential controls are unavailable."}
+                  ? account.disabled
+                    ? gt("Enable this CPA credential")
+                    : gt("Disable this CPA credential")
+                  : gt("Credential controls are unavailable.")}
               </span>
             </div>
           </TooltipPopup>
@@ -140,7 +156,7 @@ export function CompactCodexCredentialCard({
                 <Button
                   variant="ghost-muted"
                   size="icon-micro"
-                  aria-label={`Start Quota for account ${account.identifier}`}
+                  aria-label={gt("Start Quota for {account}", { account: account.identifier })}
                   disabled={Boolean(busy) || !available}
                   onClick={() => void act({ type: "startQuota" })}
                 />
@@ -148,7 +164,9 @@ export function CompactCodexCredentialCard({
             >
               {busy === "startQuota" ? <span aria-hidden>…</span> : <PlayIcon aria-hidden />}
             </TooltipTrigger>
-            <TooltipPopup side="right">Start Quota for account {account.identifier}</TooltipPopup>
+            <TooltipPopup side="right">
+              {gt("Start Quota for {account}", { account: account.identifier })}
+            </TooltipPopup>
           </Tooltip>
         </div>
       </div>

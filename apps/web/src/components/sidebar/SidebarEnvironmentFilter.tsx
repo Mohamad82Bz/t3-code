@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { MonitorCogIcon } from "lucide-react";
 
 import { useEnvironmentIdentities, useEnvironmentMachines } from "../../state/environments";
@@ -21,6 +22,7 @@ export function SidebarEnvironmentFilter({
   excludedEnvironmentIds: readonly string[];
   onExcludedEnvironmentIdsChange: (ids: readonly string[]) => void;
 }) {
+  const gt = useGT();
   const environments = useEnvironmentIdentities();
   const machineById = useEnvironmentMachines();
   const filtered = environments.some((environment) =>
@@ -29,17 +31,17 @@ export function SidebarEnvironmentFilter({
 
   return (
     <Menu>
-      <MenuTrigger render={<SidebarHeaderIconButton label="Filter by environment" />}>
+      <MenuTrigger render={<SidebarHeaderIconButton label={gt("Filter by environment")} />}>
         <MonitorCogIcon className="size-4" />
         {filtered ? (
           <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary" />
         ) : null}
       </MenuTrigger>
-      <MenuPopup align="start" aria-label="Filter by environment">
+      <MenuPopup align="start" aria-label={gt("Filter by environment")}>
         <MenuGroup>
-          <MenuGroupLabel>Environments</MenuGroupLabel>
+          <MenuGroupLabel>{gt("Environments")}</MenuGroupLabel>
           <MenuItem closeOnClick={false} onClick={() => onExcludedEnvironmentIdsChange([])}>
-            Select All
+            {gt("Select all")}
           </MenuItem>
           <MenuSeparator />
           {environments.map((environment) => (
@@ -47,7 +49,7 @@ export function SidebarEnvironmentFilter({
               key={environment.environmentId}
               checked={!excludedEnvironmentIds.includes(environment.environmentId)}
               closeOnClick={false}
-              title="Right-click to show only this environment"
+              title={gt("Right-click to show only this environment")}
               onCheckedChange={(checked) =>
                 onExcludedEnvironmentIdsChange(
                   checked

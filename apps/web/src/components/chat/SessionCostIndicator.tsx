@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
@@ -14,6 +15,7 @@ export function SessionCostIndicator({
   readonly threadRef: ScopedThreadRef;
   readonly running: boolean;
 }) {
+  const gt = useGT();
   const query = serverEnvironment.sessionCost({
     environmentId: threadRef.environmentId,
     input: { threadId: threadRef.threadId },
@@ -42,7 +44,7 @@ export function SessionCostIndicator({
             tabIndex={0}
             data-session-cost
             data-session-cost-status={failed ? "failed" : calculating ? "calculating" : "ready"}
-            aria-label={`Estimated session cost: ${value}`}
+            aria-label={gt("Estimated session cost: {value}", { value })}
             className="shrink-0 cursor-default px-1 text-xs text-muted-foreground tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           />
         }
@@ -51,18 +53,21 @@ export function SessionCostIndicator({
       </TooltipTrigger>
       <TooltipPopup side="top">
         <div className="max-w-72 space-y-1">
-          <p className="font-medium">Estimated session cost</p>
+          <p className="font-medium">{gt("Estimated session cost")}</p>
           <p>
             {result._tag === "Failure"
-              ? "Session cost could not be calculated. It will retry when the session runs or is reopened."
-              : (cost?.message ?? "Reading session usage in the background.")}
+              ? gt(
+                  "Session cost could not be calculated. It will retry when the session runs or is reopened.",
+                )
+              : (cost?.message ?? gt("Reading session usage in the background."))}
           </p>
           {cost && cost.unpricedModels.length > 0 ? (
-            <p>Missing prices: {cost.unpricedModels.join(", ")}</p>
+            <p>{gt("Missing prices: {models}", { models: cost.unpricedModels.join(", ") })}</p>
           ) : null}
           <p>
-            Includes recorded requests and native child sessions, not a subscription bill. Updates
-            after provider usage is saved.
+            {gt(
+              "Includes recorded requests and native child sessions, not a subscription bill. Updates after provider usage is saved.",
+            )}
           </p>
         </div>
       </TooltipPopup>

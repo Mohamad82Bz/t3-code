@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import {
   type EnvironmentId,
   type UsageLimitSourceAccount,
@@ -5,10 +6,10 @@ import {
 } from "@t3tools/contracts";
 import {
   collectCodexCredentialSources,
-  formatResetsIn,
   remainingPercent,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { MessageSquareIcon, PlayIcon, PowerIcon } from "lucide-react";
 
 import { useCodexCredentialAction } from "./CodexCredentialControls";
@@ -30,6 +31,7 @@ function CredentialCard({
   readonly sourceId: UsageLimitSourceId;
   readonly now: number;
 }) {
+  const gt = useGT();
   const { busy, available, act } = useCodexCredentialAction(account, environmentId, sourceId);
   return (
     <article
@@ -44,7 +46,11 @@ function CredentialCard({
           render={
             <button
               type="button"
-              aria-label={`Account ${account.identifier}: ${account.disabled ? "disabled, enable" : "enabled, disable"}`}
+              aria-label={
+                account.disabled
+                  ? gt("Enable {account}", { account: account.identifier })
+                  : gt("Disable {account}", { account: account.identifier })
+              }
               aria-pressed={!account.disabled}
               disabled={Boolean(busy) || !available}
               onClick={() =>
@@ -60,7 +66,11 @@ function CredentialCard({
             </span>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <PowerIcon className="size-3" />
-              {busy === "toggle" ? "Updating…" : account.disabled ? "Disabled" : "Enabled"}
+              {busy === "toggle"
+                ? gt("Updating…")
+                : account.disabled
+                  ? gt("Disabled")
+                  : gt("Enabled")}
             </span>
           </span>
           <span className="flex w-full flex-col gap-3">
@@ -71,20 +81,30 @@ function CredentialCard({
                 <span key={kind} className="flex flex-col gap-1.5">
                   <span className="flex items-baseline justify-between gap-2 text-xs">
                     <span className="text-muted-foreground">
-                      {kind === "session" ? "Session" : "Weekly"}
+                      {kind === "session" ? gt("Session") : gt("Weekly")}
                     </span>
                     <span className="font-semibold text-foreground tabular-nums">
-                      {remaining === null ? "Unavailable" : `${remaining}% left`}
+                      {remaining === null
+                        ? gt("Unavailable")
+                        : gt("{remaining}% left", { remaining })}
                     </span>
                   </span>
                   <span
                     className="h-1 overflow-hidden rounded-full bg-muted"
                     role="meter"
-                    aria-label={`${kind === "session" ? "Session" : "Weekly"} quota remaining`}
+                    aria-label={
+                      kind === "session"
+                        ? gt("Session quota remaining")
+                        : gt("Weekly quota remaining")
+                    }
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={remaining ?? undefined}
-                    aria-valuetext={remaining === null ? "Unavailable" : `${remaining}% left`}
+                    aria-valuetext={
+                      remaining === null
+                        ? gt("Unavailable")
+                        : gt("{remaining}% left", { remaining })
+                    }
                   >
                     <span
                       className="block h-full rounded-r bg-foreground/60 forced-colors:bg-[Highlight]"
@@ -93,8 +113,8 @@ function CredentialCard({
                   </span>
                   <span className="text-2xs text-muted-foreground tabular-nums">
                     {window
-                      ? (formatResetsIn(window, now) ?? "Reset time unavailable")
-                      : "No quota data"}
+                      ? (formatResetsIn(window, now) ?? gt("Reset time unavailable"))
+                      : gt("No quota data")}
                   </span>
                 </span>
               );
@@ -103,8 +123,12 @@ function CredentialCard({
         </TooltipTrigger>
         <TooltipPopup>
           {available
-            ? `Click to ${account.disabled ? "enable" : "disable"} this credential in CPA`
-            : "Credential management requires provider-management permission and a physical CPA auth file"}
+            ? account.disabled
+              ? gt("Enable this CPA credential")
+              : gt("Disable this CPA credential")
+            : gt(
+                "Credential management requires provider-management permission and a physical CPA auth file",
+              )}
         </TooltipPopup>
       </Tooltip>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-contain border-t border-border/60 p-3">
@@ -112,9 +136,9 @@ function CredentialCard({
           {account.email ? (
             <RedactedSensitiveText
               value={account.email}
-              ariaLabel="Toggle account email visibility"
-              revealTooltip="Click to reveal email"
-              hideTooltip="Click to hide email"
+              ariaLabel={gt("Toggle account email visibility")}
+              revealTooltip={gt("Show email")}
+              hideTooltip={gt("Hide email")}
               className="max-w-full truncate text-start"
             />
           ) : null}
@@ -123,7 +147,7 @@ function CredentialCard({
           {account.commented ? (
             <>
               <MessageSquareIcon className="size-3" />
-              Has comment
+              {gt("Has comment")}
             </>
           ) : null}
         </span>
@@ -134,7 +158,7 @@ function CredentialCard({
           onClick={() => void act({ type: "startQuota" })}
         >
           <PlayIcon aria-hidden />
-          {busy === "startQuota" ? "Starting quota…" : "Start Quota"}
+          {busy === "startQuota" ? gt("Starting quota…") : gt("Start Quota")}
         </Button>
         {!account.disabled && account.usageLimits.resetCredits?.nextCreditId ? (
           <ResetCredits
@@ -150,8 +174,7 @@ function CredentialCard({
         ) : null}
         {account.usageLimits.unavailable ? (
           <p className="text-xs text-muted-foreground">
-            {account.usageLimits.unavailable.message ??
-              "Quota unavailable. You can still manage this credential."}
+            {account.usageLimits.unavailable.message ?? gt("Quota unavailable.")}
           </p>
         ) : null}
       </div>
@@ -166,6 +189,7 @@ export function UsageCodexCredentials({
   readonly presentations: LimitPresentations;
   readonly now: number;
 }) {
+  const gt = useGT();
   return collectCodexCredentialSources(presentations).map(
     ({ environmentId, environmentLabel, source, accounts }) => (
       <section key={`${environmentId}:${source.id}`} className="flex flex-col gap-3">
@@ -178,8 +202,9 @@ export function UsageCodexCredentials({
           </span>
         </h2>
         <p className="text-xs text-muted-foreground">
-          Click a card to enable or disable its CPA credential. Start Quota sends one small request,
-          then restores its enabled state and routing prefix.
+          {gt(
+            "Select a card to toggle its CPA credential. Start Quota sends one small request and restores the original state.",
+          )}
         </p>
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex flex-1 flex-wrap items-start gap-3">

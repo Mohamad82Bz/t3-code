@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import { useIsFocused } from "@react-navigation/native";
 import {
   createThreadPresenceAtoms,
@@ -32,6 +33,7 @@ export function ComposerSpectators({
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const gt = useGT();
   const focused = useIsFocused();
   const active = useSyncExternalStore(subscribeAppState, isAppActive);
   const { presentationById } = useEnvironments();
@@ -43,7 +45,9 @@ export function ComposerSpectators({
   return (
     <View
       accessible
-      accessibilityLabel={`Spectating: ${spectators.map((spectator) => spectator.label).join(", ")}`}
+      accessibilityLabel={gt("Viewing this session: {names}", {
+        names: spectators.map((spectator) => spectator.label).join(", "),
+      })}
       className="mx-2 max-w-28 shrink flex-row items-center gap-1 rounded-md border border-border bg-foreground/5 px-2 py-1"
     >
       <EnvironmentMachineSymbol

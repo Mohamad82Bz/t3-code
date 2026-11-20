@@ -47,6 +47,7 @@ function environment(
       enabled: true,
     },
     connection: { phase: "connected", error: null, traceId: null },
+    refusedRouteIds: [],
     serverConfig: {
       environment: {
         environmentId,

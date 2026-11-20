@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import { useAtomValue } from "@effect/atom-react";
 import {
   type EnvironmentId,
@@ -7,10 +8,10 @@ import {
 } from "@t3tools/contracts";
 import {
   collectCodexCredentialSources,
-  formatResetsIn,
   remainingPercent,
   type LimitPresentations,
 } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { useRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
@@ -31,6 +32,7 @@ function CredentialCard({
   readonly sourceId: UsageLimitSourceId;
   readonly now: number;
 }) {
+  const gt = useGT();
   const command = serverEnvironment.usageLimitSourceAccountAction;
   const permitted = useAtomValue(command.permissionAtom(environmentId));
   const run = useAtomCommand(command, { reportFailure: false });
@@ -54,14 +56,18 @@ function CredentialCard({
         ? result.value.message
         : "error" in result.cause && result.cause.error instanceof Error
           ? result.cause.error.message
-          : "Could not update the credential. Refresh to check its state.",
+          : gt("Could not update the credential. Refresh to check its state."),
     );
   };
   return (
     <View className="w-64 gap-3 rounded-2xl border border-border-subtle bg-grouped-card p-4">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Account ${account.identifier}, ${account.disabled ? "disabled, enable" : "enabled, disable"}`}
+        accessibilityLabel={
+          account.disabled
+            ? gt("Enable {account}", { account: account.identifier })
+            : gt("Disable {account}", { account: account.identifier })
+        }
         accessibilityState={{ disabled: Boolean(busy) || !available }}
         disabled={Boolean(busy) || !available}
         onPress={() => void act({ type: "toggle", expectedDisabled: account.disabled ?? false })}
@@ -70,7 +76,11 @@ function CredentialCard({
         <View className="flex-row items-center justify-between gap-2">
           <Text className="text-xl font-t3-bold text-foreground">{account.identifier}</Text>
           <Text className="text-xs text-foreground-muted">
-            {busy === "toggle" ? "Updating…" : account.disabled ? "Disabled" : "Enabled"}
+            {busy === "toggle"
+              ? gt("Updating…")
+              : account.disabled
+                ? gt("Disabled")
+                : gt("Enabled")}
           </Text>
         </View>
         {(["session", "weekly"] as const).map((kind) => {
@@ -79,34 +89,36 @@ function CredentialCard({
             <View key={kind} className="gap-1">
               <View className="flex-row justify-between gap-2">
                 <Text className="text-sm text-foreground-muted">
-                  {kind === "session" ? "Session" : "Weekly"}
+                  {kind === "session" ? gt("Session") : gt("Weekly")}
                 </Text>
                 <Text className="text-sm font-t3-medium tabular-nums text-foreground">
-                  {window ? `${remainingPercent(window)}% left` : "Unavailable"}
+                  {window
+                    ? gt("{remaining}% left", { remaining: remainingPercent(window) })
+                    : gt("Unavailable")}
                 </Text>
               </View>
               <Text className="text-xs tabular-nums text-foreground-tertiary">
                 {window
-                  ? (formatResetsIn(window, now) ?? "Reset time unavailable")
-                  : "No quota data"}
+                  ? (formatResetsIn(window, now) ?? gt("Reset time unavailable"))
+                  : gt("No quota data")}
               </Text>
             </View>
           );
         })}
       </Pressable>
       {account.commented ? (
-        <Text className="text-xs text-foreground-tertiary">Has comment</Text>
+        <Text className="text-xs text-foreground-tertiary">{gt("Has comment")}</Text>
       ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Start Quota for account ${account.identifier}`}
+        accessibilityLabel={gt("Start Quota for {account}", { account: account.identifier })}
         accessibilityState={{ disabled: Boolean(busy) || !available }}
         disabled={Boolean(busy) || !available}
         onPress={() => void act({ type: "startQuota" })}
         className="min-h-11 items-center justify-center rounded-lg bg-subtle px-3 active:opacity-60 disabled:opacity-50"
       >
         <Text className="text-sm font-t3-medium text-foreground">
-          {busy === "startQuota" ? "Starting quota…" : "Start Quota"}
+          {busy === "startQuota" ? gt("Starting quota…") : gt("Start Quota")}
         </Text>
       </Pressable>
       {!account.disabled && account.usageLimits.resetCredits?.nextCreditId ? (
@@ -128,7 +140,7 @@ function CredentialCard({
       ) : null}
       {account.usageLimits.unavailable ? (
         <Text className="text-xs text-foreground-muted">
-          {account.usageLimits.unavailable.message ?? "Quota unavailable."}
+          {account.usageLimits.unavailable.message ?? gt("Quota unavailable.")}
         </Text>
       ) : null}
     </View>
@@ -142,6 +154,7 @@ export function UsageCodexCredentials({
   readonly presentations: LimitPresentations;
   readonly now: number;
 }) {
+  const gt = useGT();
   return collectCodexCredentialSources(presentations).map(
     ({ environmentId, environmentLabel, source, accounts }) => (
       <View key={`${environmentId}:${source.id}`} className="gap-3">
@@ -153,8 +166,9 @@ export function UsageCodexCredentials({
           </Text>
         </View>
         <Text className="text-xs text-foreground-muted">
-          Tap a card to enable or disable its CPA credential. Start Quota sends one small request,
-          then restores the original state.
+          {gt(
+            "Select a card to toggle its CPA credential. Start Quota sends one small request and restores the original state.",
+          )}
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View className="flex-row items-start gap-3">

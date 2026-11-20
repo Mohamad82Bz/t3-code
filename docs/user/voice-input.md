@@ -12,7 +12,22 @@ to a named environment on that phone, open **Settings → Voice → Transcribe o
 
 ## Choose where audio goes
 
-On web and desktop, you choose where transcription runs.
+On Windows desktop in this fork, **Settings → Voice → Qwen dictation** offers
+**Use local Qwen for voice input**, enabled by default. The regular microphone
+and dictation shortcuts use the existing Qwen Dictation service on your PC,
+without sending audio to an environment or cloud provider. The service must be
+running; there is no automatic fallback. Turn this option off to use T3's normal
+transcription destination instead. Web and mobile keep their normal voice input.
+
+**Automatic punctuation** under Qwen is off by default. Periods, commas, and
+other punctuation are removed from Qwen's output, while punctuation you type
+manually is untouched. Turn it on to keep Qwen's punctuation. With **Live insertion**
+on, stable words are inserted at your current cursor as you speak and you can
+continue editing. Cancelling stops future insertion but keeps words already
+inserted. Qwen uses its own language and vocabulary settings and bypasses T3's
+transcript cleanup. Its optional global shortcut uses the same microphone flow.
+
+On web and desktop without Qwen enabled, you choose where transcription runs.
 Nothing is sent until you choose one: open **Settings → Voice** and set
 **Transcribe with** to the environment that should transcribe for you.
 On a new device, the microphone or dictation shortcut opens that setting from the composer.
@@ -74,8 +89,10 @@ format, such as Core ML, ONNX, or MLX builds of the same model, can’t be used.
 
 Select the languages you dictate in to compare models that support all of them.
 Accuracy shows how often the model got words or characters wrong in each
-language; speed is the time to transcribe 30 seconds on a reference GPU. Choose
-**All languages** to browse the full catalog. Filtering does not switch your model.
+language; speed is the time to transcribe 30 seconds on a reference CPU or GPU,
+matching the selected environment's transcription backend. Recommendations use
+the same reference tier for every selected language. Choose **All languages** to
+browse without a language preference. Filtering does not switch your model.
 
 **Advanced** controls GPU or CPU use and when an idle model is unloaded. With hardware set to
 **Auto**, a recording that fails on the GPU is retried once on that same

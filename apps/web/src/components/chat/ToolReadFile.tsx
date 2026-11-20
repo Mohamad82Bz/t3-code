@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { File } from "@pierre/diffs/react";
 import type { readToolFile } from "@t3tools/client-runtime/work-log/item-detail";
 
@@ -14,12 +15,13 @@ export function ToolReadFile({
 }: {
   readonly file: NonNullable<ReturnType<typeof readToolFile>>;
 }) {
+  const gt = useGT();
   const { resolvedTheme } = useTheme();
   const raw = (
     <pre className="p-2 font-mono text-xs whitespace-pre">{file.contents || "Empty file."}</pre>
   );
   return (
-    <ToolCodeSurface label={`File contents for ${file.fileName}`}>
+    <ToolCodeSurface label={gt("File contents for {file}", { file: file.fileName })}>
       <RenderErrorBoundary fallback={raw}>
         {file.contents === "" ? (
           raw

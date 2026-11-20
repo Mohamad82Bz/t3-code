@@ -5,6 +5,7 @@ import type {
   UsageLimitSourceConfig,
   UsageLimitSourceId,
 } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { useId, useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -40,6 +41,7 @@ export function AddUsageLimitSourceDialog({
   readonly source?: { readonly id: UsageLimitSourceId; readonly config: UsageLimitSourceConfig };
   readonly sources: UnifiedSettings["usageLimitSources"];
 }) {
+  const gt = useGT();
   const formId = useId();
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [label, setLabel] = useState(source?.config.label ?? "");
@@ -94,10 +96,14 @@ export function AddUsageLimitSourceDialog({
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{source ? "Edit CLIProxyAPI hub" : "Add a CLIProxyAPI hub"}</DialogTitle>
+          <DialogTitle>
+            {source ? gt("Edit CLIProxyAPI hub") : gt("Add a CLIProxyAPI hub")}
+          </DialogTitle>
           <DialogDescription>
-            Show the quota of every account the hub pools, next to the providers on{" "}
-            {environmentLabel}. The key stays on that server.
+            <T>
+              Show the quota of every account the hub pools, next to the providers on{" "}
+              <Var>{environmentLabel}</Var>. The key stays on that server.
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -110,7 +116,9 @@ export function AddUsageLimitSourceDialog({
             }}
           >
             <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-url">Hub URL</Label>
+              <Label htmlFor="usage-source-url">
+                <T>Hub URL</T>
+              </Label>
               <Input
                 id="usage-source-url"
                 placeholder="https://hub.example.ts.net:8318"
@@ -120,10 +128,12 @@ export function AddUsageLimitSourceDialog({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-key">Management key</Label>
+              <Label htmlFor="usage-source-key">
+                <T>Management key</T>
+              </Label>
               <SecretSourceInput
                 id="usage-source-key"
-                aria-label="Management key"
+                aria-label={gt("Management key")}
                 value={keyDraft}
                 sources={secretSources}
                 environmentId={environmentId}
@@ -133,36 +143,42 @@ export function AddUsageLimitSourceDialog({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-label">Label (optional)</Label>
+              <Label htmlFor="usage-source-label">
+                <T>Label (optional)</T>
+              </Label>
               <Input
                 id="usage-source-label"
-                placeholder="Defaults to the hub's host name"
+                placeholder={gt("Defaults to the hub's host name")}
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-inference-url">Inference URL (optional)</Label>
+              <Label htmlFor="usage-source-inference-url">{gt("Inference URL (optional)")}</Label>
               <Input
                 id="usage-source-inference-url"
-                placeholder="Defaults to the hub URL"
+                placeholder={gt("Defaults to the hub URL")}
                 value={inferenceUrl}
                 onChange={(event) => setInferenceUrl(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                For Start Quota when CPA management and inference use different ports.
+                {gt("Used when CPA management and inference use different ports.")}
               </p>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="usage-source-inference-key">Inference API key (optional)</Label>
+              <Label htmlFor="usage-source-inference-key">
+                {gt("Inference API key (optional)")}
+              </Label>
               <SecretInput
                 id="usage-source-inference-key"
                 value={inferenceKey}
                 onChange={(event) => setInferenceKey(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Otherwise Start Quota uses a client key from the hub's management API. Keys stay on{" "}
-                {environmentLabel}.
+                {gt(
+                  "Otherwise Start Quota uses a client key from the hub. Keys stay on {environment}.",
+                  { environment: environmentLabel },
+                )}
               </p>
             </div>
           </form>
@@ -175,10 +191,10 @@ export function AddUsageLimitSourceDialog({
               onOpenChange(false);
             }}
           >
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button type="submit" form={formId} disabled={!canSave}>
-            {source ? "Save hub" : "Add hub"}
+            {source ? gt("Save hub") : gt("Add hub")}
           </Button>
         </DialogFooter>
       </DialogPopup>
