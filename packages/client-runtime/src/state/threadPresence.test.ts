@@ -19,6 +19,7 @@ import {
   presentThreadSpectators,
   threadPresenceInput,
   threadPresenceTarget,
+  threadPresenceOverviewTarget,
 } from "./threadPresence.ts";
 
 const HOST = EnvironmentId.make("mamd");
@@ -85,6 +86,44 @@ describe("thread spectator identity", () => {
       };
       expect(threadPresenceTarget(FRIEND, THREAD, new Map([[FRIEND, legacy]]), true)).toBeNull();
     }
+  });
+
+  it("gates sidebar observation independently from view registration for older servers", () => {
+    const modern = environment(FRIEND, false, "syrent", "linux");
+    expect(threadPresenceOverviewTarget(FRIEND, new Map([[FRIEND, modern]]), true)).toBeNull();
+    const supported = {
+      ...modern,
+      serverConfig: {
+        ...modern.serverConfig!,
+        environment: {
+          ...modern.serverConfig!.environment,
+          capabilities: {
+            repositoryIdentity: true,
+            threadPresence: true,
+            threadPresenceOverview: true,
+          },
+        },
+      },
+    };
+    const environments = new Map([[FRIEND, supported]]);
+    expect(threadPresenceOverviewTarget(FRIEND, environments, true)).toEqual({
+      environmentId: FRIEND,
+      input: {},
+    });
+    expect(threadPresenceOverviewTarget(FRIEND, environments, false)).toBeNull();
+    expect(threadPresenceOverviewTarget(HOST, environments, true)).toBeNull();
+    expect(
+      threadPresenceOverviewTarget(
+        FRIEND,
+        new Map([
+          [
+            FRIEND,
+            { ...supported, connection: { phase: "reconnecting", error: null, traceId: null } },
+          ],
+        ]),
+        true,
+      ),
+    ).toBeNull();
   });
 
   it("does not subscribe for hidden views, drafts, disconnected or unknown destinations", () => {

@@ -12,8 +12,10 @@ import { resolveNativeReviewDiffView } from "../diffs/nativeReviewDiffSurface";
 import {
   buildNativeReviewDiffData,
   buildNativeReviewSnippetRows,
+  buildReviewCommentPatch,
   createNativeReviewDiffTheme,
   NATIVE_REVIEW_DIFF_CONTENT_WIDTH,
+  reviewCommentDiffText,
 } from "./nativeReviewDiffAdapter";
 import { buildReviewParsedDiff } from "./reviewModel";
 import { REVIEW_MONO_FONT_FAMILY } from "./reviewDiffRendering";
@@ -32,17 +34,14 @@ export interface ReviewCommentColors {
 export function useReviewCommentColors(): ReviewCommentColors {
   const theme = useUniwindTheme();
 
-  return useMemo(
-    () => ({
-      background: theme["--color-card"],
-      border: theme["--color-border"],
-      mutedBackground: theme["--color-subtle"],
-      text: theme["--color-foreground"],
-      mutedText: theme["--color-foreground-muted"],
-      codeBackground: theme["--color-md-code-bg"],
-    }),
-    [theme],
-  );
+  return {
+    background: theme["--color-card"],
+    border: theme["--color-border"],
+    mutedBackground: theme["--color-subtle"],
+    text: theme["--color-foreground"],
+    mutedText: theme["--color-foreground-muted"],
+    codeBackground: theme["--color-md-code-bg"],
+  };
 }
 
 export const ReviewCommentCard = memo(function ReviewCommentCard(props: {
@@ -89,7 +88,7 @@ export const ReviewCommentCard = memo(function ReviewCommentCard(props: {
     theme: appearanceScheme,
   });
   const snippetTokens = useMarkdownCodeHighlight({
-    code: props.comment.diff.trim(),
+    code: reviewCommentDiffText(props.comment.diff),
     language: props.comment.fenceLanguage ?? language,
     enabled: compactNativeRows.length === 0,
     theme: appearanceScheme,
@@ -113,10 +112,7 @@ export const ReviewCommentCard = memo(function ReviewCommentCard(props: {
     () => JSON.stringify(nativeReviewDiffTheme),
     [nativeReviewDiffTheme],
   );
-  const nativeStyleJson = useMemo(
-    () => JSON.stringify({ ...nativeReviewDiffStyle, wordWrap: false }),
-    [nativeReviewDiffStyle],
-  );
+  const nativeStyleJson = JSON.stringify({ ...nativeReviewDiffStyle, wordWrap: false });
   const nativeDiffHeight = useMemo(
     () =>
       Math.min(
@@ -240,32 +236,10 @@ export const ReviewCommentCard = memo(function ReviewCommentCard(props: {
                     </NativeText>
                   ) /* oxlint-enable react/no-array-index-key */,
                 )
-              : props.comment.diff.trim()}
+              : reviewCommentDiffText(props.comment.diff)}
           </NativeText>
         </ScrollView>
       ) : null}
     </View>
   );
 });
-
-function buildReviewCommentPatch(comment: ReviewInlineComment): string {
-  if ((comment.fenceLanguage ?? "diff") !== "diff") {
-    return "";
-  }
-  const diff = comment.diff.trim();
-  if (!diff) {
-    return "";
-  }
-
-  if (diff.startsWith("diff --git ")) {
-    return diff;
-  }
-
-  const normalizedPath = comment.filePath.replaceAll("\\", "/");
-  return [
-    `diff --git a/${normalizedPath} b/${normalizedPath}`,
-    `--- a/${normalizedPath}`,
-    `+++ b/${normalizedPath}`,
-    diff,
-  ].join("\n");
-}

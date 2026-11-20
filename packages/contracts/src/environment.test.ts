@@ -16,7 +16,11 @@ const descriptor = {
 describe("ExecutionEnvironmentDescriptor", () => {
   it("decodes old, recognized and future manual installation descriptors", () => {
     expect(decodeDescriptor(descriptor).capabilities.serverInstallation).toBeUndefined();
-    for (const installation of [{ kind: "npx" }, { kind: "npm-global", prefix: "/opt/node" }]) {
+    for (const installation of [
+      { kind: "npx" },
+      { kind: "npm-global", prefix: "/opt/node" },
+      { kind: "t3-launcher", launcher: "/opt/bin/t3", baseDir: "/data/t3" },
+    ]) {
       expect(
         decodeDescriptor({
           ...descriptor,
@@ -24,7 +28,18 @@ describe("ExecutionEnvironmentDescriptor", () => {
         }).capabilities.serverInstallation,
       ).toEqual(installation);
     }
-    for (const installation of [{ kind: "future-manager" }, { kind: "npm-global" }]) {
+    const spaced = { kind: "t3-launcher", launcher: "/opt/bin/t3 ", baseDir: " /data/t3 " };
+    expect(
+      decodeDescriptor({
+        ...descriptor,
+        capabilities: { ...descriptor.capabilities, serverInstallation: spaced },
+      }).capabilities.serverInstallation,
+    ).toEqual(spaced);
+    for (const installation of [
+      { kind: "future-manager" },
+      { kind: "npm-global" },
+      { kind: "t3-launcher", launcher: "t3" },
+    ]) {
       expect(
         decodeDescriptor({
           ...descriptor,
@@ -37,6 +52,13 @@ describe("ExecutionEnvironmentDescriptor", () => {
 
 it("keeps spectator presence optional for stock servers", () => {
   expect(decodeDescriptor(descriptor).capabilities.threadPresence).toBeUndefined();
+  expect(decodeDescriptor(descriptor).capabilities.threadPresenceOverview).toBeUndefined();
+  expect(
+    decodeDescriptor({
+      ...descriptor,
+      capabilities: { ...descriptor.capabilities, threadPresenceOverview: true },
+    }).capabilities.threadPresenceOverview,
+  ).toBe(true);
   expect(
     decodeDescriptor({
       ...descriptor,

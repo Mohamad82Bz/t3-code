@@ -2,6 +2,23 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { commandDisplayText, commandProgramName } from "./commandLabel.ts";
 
+describe("PowerShell command display", () => {
+  it.each([
+    [
+      '"C:\\\\WINDOWS\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe" -Command "Get-Content AGENTS.md"',
+      "Get-Content AGENTS.md",
+    ],
+    ["pwsh -NoProfile -ExecutionPolicy Bypass -Command 'git status'", "git status"],
+    ["powershell -Command 'pwd'; git status", "powershell -Command 'pwd'; git status"],
+    ["pwsh -Command 'echo $args' extra", "pwsh -Command 'echo $args' extra"],
+    ["pwsh -File script.ps1", "pwsh -File script.ps1"],
+    ["pwsh -EncodedCommand ZWNobyBvaw==", "pwsh -EncodedCommand ZWNobyBvaw=="],
+    ["pwsh -Command 'unterminated", "pwsh -Command 'unterminated"],
+  ])("unwraps only an unambiguous command payload: %s", (input, expected) => {
+    expect(commandDisplayText(input)).toBe(expected);
+  });
+});
+
 describe("commandProgramName", () => {
   it.each([
     ["/bin/bash --rcfile /tmp/config -c 'git status'", "git"],

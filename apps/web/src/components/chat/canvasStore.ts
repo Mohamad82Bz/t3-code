@@ -13,6 +13,7 @@ interface CanvasEdges {
 
 export interface ChatCanvasMeasurements {
   readonly width: number;
+  readonly narrowestWidth?: number;
   readonly height: number;
   readonly padding: number;
   readonly maxChatWidth: number;
@@ -47,6 +48,7 @@ const sameEdges = (a: CanvasEdges | null, b: CanvasEdges | null) =>
 
 const sameMeasurements = (a: ChatCanvasMeasurements, b: ChatCanvasMeasurements) =>
   a.width === b.width &&
+  a.narrowestWidth === b.narrowestWidth &&
   a.height === b.height &&
   a.padding === b.padding &&
   a.maxChatWidth === b.maxChatWidth &&
@@ -85,7 +87,6 @@ export function resolveChatCanvasModel({
   threadRef,
   preview,
   detailsCardInlineOpen,
-  centerBesideDetails,
 }: {
   measurements: ChatCanvasMeasurements;
   detailsCardMeasurement: DetailsCardMeasurement | null;
@@ -93,7 +94,6 @@ export function resolveChatCanvasModel({
   threadRef: ScopedThreadRef | null;
   preview: ChatCanvasPreview | null;
   detailsCardInlineOpen: boolean;
-  centerBesideDetails: boolean;
 }) {
   const container = { width: measurements.width, height: measurements.height };
   const { findBar } = measurements;
@@ -103,6 +103,7 @@ export function resolveChatCanvasModel({
   // preview overlap has pushed the card itself into popover mode.
   const preferredDetailsCard = resolveThreadDetailsCardLayout({
     container,
+    narrowestWidth: measurements.narrowestWidth ?? measurements.width,
     lane,
     frame: null,
     topInset: detailsCardTopInset,
@@ -138,10 +139,10 @@ export function resolveChatCanvasModel({
     composerHeight: measurements.composerHeight,
     detailsCard,
     findBar,
-    centerBesideDetails,
   });
   const detailsCardPlacement = resolveThreadDetailsCardLayout({
     container,
+    narrowestWidth: measurements.narrowestWidth ?? measurements.width,
     lane,
     frame: layout.frame,
     overlapsDetailsCard: layout.overlapsDetailsCard,

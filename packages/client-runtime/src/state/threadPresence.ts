@@ -12,6 +12,7 @@ import type { Atom } from "effect/reactivity";
 import type { EnvironmentPresentation } from "../connection/presentation.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createEnvironmentRpcSubscriptionAtomFamily } from "./runtime.ts";
+import { reuseUnchanged } from "./serverConfigProjection.ts";
 
 export function createThreadPresenceAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -22,6 +23,36 @@ export function createThreadPresenceAtoms<R, E>(
     idleTtlMs: 0,
     transform: (stream) => Stream.concat(Stream.succeed<ThreadSpectators>([]), stream),
   });
+}
+
+export function createThreadPresenceOverviewAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  return createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "thread-presence-overview",
+    tag: ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresenceOverview,
+    idleTtlMs: 0,
+    transform: (stream) =>
+      stream.pipe(
+        Stream.map((snapshot) =>
+          Object.fromEntries(snapshot.map(({ threadId, spectators }) => [threadId, spectators])),
+        ),
+        Stream.scan((): Readonly<Record<string, ThreadSpectators>> => ({}), reuseUnchanged),
+      ),
+  });
+}
+
+export function threadPresenceOverviewTarget(
+  environmentId: EnvironmentId,
+  environments: ReadonlyMap<EnvironmentId, EnvironmentPresentation>,
+  active: boolean,
+) {
+  const destination = environments.get(environmentId);
+  return active &&
+    destination?.connection.phase === "connected" &&
+    destination.serverConfig?.environment.capabilities.threadPresenceOverview === true
+    ? { environmentId, input: {} }
+    : null;
 }
 
 export function threadPresenceTarget(

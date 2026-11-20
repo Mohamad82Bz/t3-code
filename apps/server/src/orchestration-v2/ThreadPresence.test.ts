@@ -8,6 +8,7 @@ import {
   type SubscribeThreadPresenceInput,
   type ThreadSpectator,
   type ThreadSpectators,
+  type ThreadPresenceSnapshot,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -19,7 +20,6 @@ import * as RpcTest from "effect/rpc/RpcTest";
 
 import * as RpcAuthorization from "../auth/RpcAuthorization.ts";
 
-import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ThreadPresence from "./ThreadPresence.ts";
 
 const HOST = EnvironmentId.make("mamd");
@@ -30,14 +30,8 @@ const FRIEND: ThreadSpectator = {
   label: "syrent",
   machine: "linux",
 };
-const layer = ThreadPresence.layer.pipe(
-  Layer.provide(
-    Layer.succeed(ServerEnvironment.ServerEnvironment, {
-      getEnvironmentId: Effect.succeed(HOST),
-      getDescriptor: Effect.die("Presence does not need the environment descriptor"),
-    }),
-  ),
-);
+const layer = ThreadPresence.layer;
+const OWNER: ThreadSpectator = { environmentId: HOST, label: "Mamd", machine: "desktop" };
 
 const openView = Effect.fnUntraced(function* (input: SubscribeThreadPresenceInput) {
   const presence = yield* ThreadPresence.ThreadPresence;
@@ -52,18 +46,66 @@ const openView = Effect.fnUntraced(function* (input: SubscribeThreadPresenceInpu
   return { initial, updates, close: Scope.close(scope, Exit.void) };
 });
 
-it.effect("excludes the host and broadcasts a visitor to both the host and the visitor", () =>
+it.effect("includes the owner and broadcasts every viewer to themselves and others", () =>
   Effect.gen(function* () {
-    const host = yield* openView({
-      threadId: THREAD,
-      spectator: { environmentId: HOST, label: "Mamd", machine: "desktop" },
-    });
-    assert.deepEqual(host.initial, []);
+    const host = yield* openView({ threadId: THREAD, spectator: OWNER });
+    assert.deepEqual(host.initial, [OWNER]);
     const friend = yield* openView({ threadId: THREAD, spectator: FRIEND });
-    assert.deepEqual(friend.initial, [FRIEND]);
-    assert.deepEqual(yield* Queue.take(host.updates), [FRIEND]);
+    assert.deepEqual(friend.initial, [OWNER, FRIEND]);
+    assert.deepEqual(yield* Queue.take(host.updates), [OWNER, FRIEND]);
     yield* friend.close;
-    assert.deepEqual(yield* Queue.take(host.updates), []);
+    assert.deepEqual(yield* Queue.take(host.updates), [OWNER]);
+  }).pipe(Effect.scoped, Effect.provide(layer)),
+);
+
+const openOverview = Effect.fnUntraced(function* () {
+  const presence = yield* ThreadPresence.ThreadPresence;
+  const updates = yield* Queue.unbounded<ThreadPresenceSnapshot>();
+  const fiber = yield* presence.observe().pipe(
+    Stream.runForEach((snapshot) => Queue.offer(updates, snapshot)),
+    Effect.forkScoped,
+  );
+  const initial = yield* Queue.take(updates);
+  return { initial, updates, fiber };
+});
+
+it.effect("observes all sessions without joining them, including the owner's own sessions", () =>
+  Effect.gen(function* () {
+    const sidebar = yield* openOverview();
+    assert.deepEqual(sidebar.initial, []);
+    const owner = yield* openView({ threadId: THREAD, spectator: OWNER });
+    assert.deepEqual(yield* Queue.take(sidebar.updates), [
+      { threadId: THREAD, spectators: [OWNER] },
+    ]);
+    const friend = yield* openView({ threadId: OTHER_THREAD, spectator: FRIEND });
+    const both = [
+      { threadId: THREAD, spectators: [OWNER] },
+      { threadId: OTHER_THREAD, spectators: [FRIEND] },
+    ];
+    assert.deepEqual(yield* Queue.take(sidebar.updates), both);
+    const lateSidebar = yield* openOverview();
+    assert.deepEqual(lateSidebar.initial, both);
+    assert.equal(yield* Queue.size(owner.updates), 0);
+    assert.equal(yield* Queue.size(sidebar.updates), 0);
+    const duplicate = yield* openView({ threadId: OTHER_THREAD, spectator: FRIEND });
+    assert.equal(yield* Queue.size(sidebar.updates), 0);
+    yield* friend.close;
+    assert.equal(yield* Queue.size(sidebar.updates), 0);
+    yield* duplicate.close;
+    assert.deepEqual(yield* Queue.take(sidebar.updates), [
+      { threadId: THREAD, spectators: [OWNER] },
+    ]);
+    const moved = yield* openView({ threadId: THREAD, spectator: FRIEND });
+    assert.deepEqual(yield* Queue.take(sidebar.updates), [
+      { threadId: THREAD, spectators: [OWNER, FRIEND] },
+    ]);
+    yield* owner.close;
+    assert.deepEqual(yield* Queue.take(sidebar.updates), [
+      { threadId: THREAD, spectators: [FRIEND] },
+    ]);
+    yield* moved.close;
+    assert.deepEqual(yield* Queue.take(sidebar.updates), []);
+    assert.deepEqual((yield* openOverview()).initial, []);
   }).pipe(Effect.scoped, Effect.provide(layer)),
 );
 
@@ -128,18 +170,30 @@ it.effect("streams presence through the read-only RPC and cleans up a cancelled 
   Effect.gen(function* () {
     const presence = yield* ThreadPresence.ThreadPresence;
     const method = ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresence;
+    const overviewMethod = ORCHESTRATION_V2_WS_METHODS.subscribeThreadPresenceOverview;
     const group = WsRpcGroup.omit(
       ...[...WsRpcGroup.requests.keys()].filter(
-        (tag): tag is Exclude<keyof typeof RpcAuthorization.RPC_REQUIRED_SCOPES, typeof method> =>
-          tag !== method,
+        (
+          tag,
+        ): tag is Exclude<
+          keyof typeof RpcAuthorization.RPC_REQUIRED_SCOPES,
+          typeof method | typeof overviewMethod
+        > => tag !== method && tag !== overviewMethod,
       ),
     );
     const rpcLayer = Layer.mergeAll(
       group.toLayerHandler(method, (input) => presence.subscribe(input)),
+      group.toLayerHandler(overviewMethod, () => presence.observe()),
       RpcAuthorization.layer([AuthOrchestrationReadScope]),
     );
     const host = yield* RpcTest.makeClient(group).pipe(Effect.provide(rpcLayer));
     const visitor = yield* RpcTest.makeClient(group).pipe(Effect.provide(rpcLayer));
+    const overviewReceived = yield* Queue.unbounded<ThreadPresenceSnapshot>();
+    yield* host[overviewMethod]({}).pipe(
+      Stream.runForEach((snapshot) => Queue.offer(overviewReceived, snapshot)),
+      Effect.forkScoped,
+    );
+    assert.deepEqual(yield* Queue.take(overviewReceived), []);
     const received = yield* Queue.unbounded<ThreadSpectators>();
     yield* host[method]({ threadId: THREAD }).pipe(
       Stream.runForEach((snapshot) => Queue.offer(received, snapshot)),
@@ -155,7 +209,11 @@ it.effect("streams presence through the read-only RPC and cleans up a cancelled 
     );
     assert.deepEqual(yield* Queue.take(visitorReceived), [FRIEND]);
     assert.deepEqual(yield* Queue.take(received), [FRIEND]);
+    assert.deepEqual(yield* Queue.take(overviewReceived), [
+      { threadId: THREAD, spectators: [FRIEND] },
+    ]);
     yield* Scope.close(visitorScope, Exit.void);
     assert.deepEqual(yield* Queue.take(received), []);
+    assert.deepEqual(yield* Queue.take(overviewReceived), []);
   }).pipe(Effect.scoped, Effect.provide(layer)),
 );

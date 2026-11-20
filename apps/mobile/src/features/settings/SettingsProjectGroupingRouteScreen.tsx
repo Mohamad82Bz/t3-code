@@ -10,9 +10,10 @@ import {
   resolveMobileProjectGroupingSettings,
 } from "../../state/project-grouping";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
-import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
+import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
-import { WorkingSectionSettings } from "./ThreadSettingsSections";
+import { LanguageSettingsSection } from "./SettingsLanguageRouteScreen";
+import { NewThreadSettingsSection, WorkingSectionSettings } from "./ThreadSettingsSections";
 
 const GROUPING_OPTIONS: ReadonlyArray<{
   readonly mode: SidebarProjectGroupingMode;
@@ -54,6 +55,7 @@ export function SettingsProjectGroupingRouteScreen() {
         contentContainerClassName="gap-3 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
+        <LanguageSettingsSection />
         <SettingsSection title="Project grouping">
           {GROUPING_OPTIONS.map((option, index) => (
             <SettingsChoiceRow
@@ -68,6 +70,7 @@ export function SettingsProjectGroupingRouteScreen() {
           ))}
         </SettingsSection>
         <WorkingSectionSettings />
+        <NewThreadSettingsSection />
       </ScrollView>
     </SettingsScreen>
   );

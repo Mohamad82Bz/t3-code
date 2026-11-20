@@ -1,9 +1,11 @@
-import {
-  type EnvironmentId,
-  type UsageLimitSourceConfig,
+import type {
+  EnvironmentId,
+  SecretReference,
+  UnifiedSettings,
+  UsageLimitSourceConfig,
   UsageLimitSourceId,
 } from "@t3tools/contracts";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { Button } from "../ui/button";
@@ -18,19 +20,9 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { SecretInput } from "./SecretInput";
+import { sourceIdFromUrl } from "./AddUsageLimitSourceDialog.logic";
+import { SecretSourceInput, useSecretSources } from "./SecretSourceInput";
 import { Label } from "../ui/label";
-
-function sourceIdFromUrl(url: string): UsageLimitSourceId {
-  let host = url;
-  try {
-    host = new URL(url).host;
-  } catch {}
-  const slug = host
-    .toLowerCase()
-    .replace(/[^a-z0-9.-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return UsageLimitSourceId.make(`cliproxy-${slug || "hub"}`);
-}
 
 /** Send the management key once to server secret storage; settings retain only a redaction marker. */
 export function AddUsageLimitSourceDialog({
@@ -39,40 +31,49 @@ export function AddUsageLimitSourceDialog({
   environmentId,
   environmentLabel,
   source,
+  sources,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly source?: { readonly id: UsageLimitSourceId; readonly config: UsageLimitSourceConfig };
+  readonly sources: UnifiedSettings["usageLimitSources"];
 }) {
+  const formId = useId();
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [label, setLabel] = useState(source?.config.label ?? "");
   const [url, setUrl] = useState(source?.config.url ?? "");
-  const [managementKey, setManagementKey] = useState(source?.config.managementKey ?? "");
   const [inferenceUrl, setInferenceUrl] = useState(source?.config.inferenceUrl ?? "");
   const [inferenceKey, setInferenceKey] = useState(source?.config.inferenceKey ?? "");
+  const secretSources = useSecretSources(environmentId);
+  const [keyDraft, setKeyDraft] = useState<string | SecretReference>(
+    source?.config.managementKey ?? "",
+  );
+  const [keyValid, setKeyValid] = useState(true);
+  const managementKey = typeof keyDraft === "string" ? keyDraft.trim() : keyDraft;
   const trimmedUrl = url.trim();
-  const canSave = trimmedUrl.length > 0 && managementKey.trim().length > 0;
+  const canSave = keyValid && trimmedUrl.length > 0 && managementKey !== "";
 
   const reset = () => {
     setLabel("");
     setUrl("");
-    setManagementKey("");
+    setKeyDraft("");
+    setKeyValid(true);
     setInferenceUrl("");
     setInferenceKey("");
   };
 
   const save = () => {
     if (!canSave) return;
-    const id = source?.id ?? sourceIdFromUrl(trimmedUrl);
+    const id = source?.id ?? sourceIdFromUrl(trimmedUrl, sources);
     updateSettings({
       usageLimitSources: {
         [id]: {
           kind: "cliproxy",
           ...(label.trim() ? { label: label.trim() } : {}),
           url: trimmedUrl,
-          managementKey: managementKey.trim(),
+          managementKey,
           enabled: source?.config.enabled ?? true,
           ...(inferenceUrl.trim() ? { inferenceUrl: inferenceUrl.trim() } : {}),
           ...(inferenceKey.trim() ? { inferenceKey: inferenceKey.trim() } : {}),
@@ -101,6 +102,7 @@ export function AddUsageLimitSourceDialog({
         </DialogHeader>
         <DialogPanel>
           <form
+            id={formId}
             className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault();
@@ -119,10 +121,15 @@ export function AddUsageLimitSourceDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="usage-source-key">Management key</Label>
-              <SecretInput
+              <SecretSourceInput
                 id="usage-source-key"
-                value={managementKey}
-                onChange={(event) => setManagementKey(event.target.value)}
+                aria-label="Management key"
+                value={keyDraft}
+                sources={secretSources}
+                environmentId={environmentId}
+                onChange={(event) => setKeyDraft(event.target.value)}
+                onSecretChange={(secret) => setKeyDraft(secret ?? "")}
+                onValidityChange={setKeyValid}
               />
             </div>
             <div className="grid gap-1.5">
@@ -170,7 +177,7 @@ export function AddUsageLimitSourceDialog({
           >
             Cancel
           </Button>
-          <Button onClick={save} disabled={!canSave}>
+          <Button type="submit" form={formId} disabled={!canSave}>
             {source ? "Save hub" : "Add hub"}
           </Button>
         </DialogFooter>

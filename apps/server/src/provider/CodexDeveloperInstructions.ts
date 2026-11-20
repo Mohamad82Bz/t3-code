@@ -3,15 +3,12 @@ import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeI
 
 import {
   T3_CODE_BROWSER_TOOL_INSTRUCTIONS,
+  T3_CODE_DEVICE_TOOL_INSTRUCTIONS,
   T3_CODE_ORCHESTRATION_SECTIONS,
 } from "@t3tools/provider-core/server/orchestrationInstructions";
 
 /** Codex silently truncates additionalContext values over 1,000 tokens, counted as UTF-8 bytes / 4. */
 export const CODEX_ADDITIONAL_CONTEXT_VALUE_MAX_BYTES = 4_000;
-
-const T3_CODE_DEVICE_TOOL_INSTRUCTIONS = `## T3 Code devices
-
-For iOS Simulators and Android Emulators here, call \`device_list\`, then \`device_open\`. Drive the device with the exact \`agent-device\` launcher and flags it returns, on every command. Prefer \`agent-device snapshot -i\` refs over coordinates. Use \`device_screenshot\` to see the screen. Use \`xcrun simctl\` or \`adb\` only for builds, logs, and ports. If a platform is unavailable, say so.`;
 
 export interface T3CodeToolAvailability {
   readonly browser: boolean;
@@ -57,6 +54,11 @@ export function buildCodexAdditionalContext(
     t3_code_runtime: {
       kind: "application",
       value: buildRuntimeInstructions({ harness: "Codex", ...runtime }),
+    },
+    t3_code_command_titles: {
+      kind: "application",
+      value:
+        "For shell tool calls using PowerShell, bash, sh, or zsh, put a short plain-English purpose on the first line as a shell comment: # t3-title: Read project instructions. Use an imperative phrase describing the whole operation, especially for inline scripts and compound commands. T3 displays this as the tool-call title; it is not output. Keep the real command on subsequent lines. Do not add this comment inside script literals or to cmd.exe commands, which do not support # comments. Do not change execution or request elevated permissions just to provide a title.",
     },
     ...(tools ? { t3_code_tools: { kind: "application", value: tools } } : {}),
   };

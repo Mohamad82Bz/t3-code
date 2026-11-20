@@ -131,7 +131,6 @@ export function selectIncomingShareAttachmentsForServer(input: {
   readonly serverConfig: {
     readonly environment: {
       readonly capabilities: {
-        readonly attachmentUploads?: boolean;
         readonly fileAttachments?: { readonly maxUploadBytes: number };
       };
     };
@@ -148,10 +147,7 @@ export function selectIncomingShareAttachmentsForServer(input: {
     return { status: "pending" };
   }
   const capabilities = input.serverConfig?.environment.capabilities;
-  const maxFileAttachmentBytes =
-    capabilities?.attachmentUploads === true
-      ? (capabilities.fileAttachments?.maxUploadBytes ?? null)
-      : null;
+  const maxFileAttachmentBytes = capabilities?.fileAttachments?.maxUploadBytes ?? null;
   return {
     status: "ready",
     ...selectIncomingShareAttachments({
@@ -336,7 +332,7 @@ export async function buildIncomingShareDraft(input: {
           }
         }
         attachments.push({
-          id: `${input.id}:file:${index}`,
+          id: `${input.id}-file-${index}`,
           type: "file",
           name,
           mimeType,
@@ -401,7 +397,7 @@ export async function buildIncomingShareDraft(input: {
       }
       const dataUrl = `data:${mimeType};base64,${base64}`;
       attachments.push({
-        id: `${input.id}:image:${index}`,
+        id: `${input.id}-image-${index}`,
         type: "image",
         name: resolved?.originalName ?? fallbackName(uri, index, mimeType),
         mimeType,

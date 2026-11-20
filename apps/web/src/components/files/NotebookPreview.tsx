@@ -57,7 +57,7 @@ export default function NotebookPreview(props: {
       (count, cell) => count + cell.outputs.filter((output) => output.kind === "html").length,
       0,
     );
-  // oxlint-disable-next-line t3code/react-effect-budget -- Observe output visibility and measure departing outputs to bound iframe lifetimes while preserving scroll height.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Observe output visibility and measure departing outputs to bound iframe lifetimes while preserving scroll height.
   useEffect(() => {
     const root = scroll.current;
     if (!root || !outputCount) return;
@@ -98,7 +98,8 @@ export default function NotebookPreview(props: {
         className="border-b border-border/60 px-3 py-2 text-xs text-muted-foreground tabular-nums"
         role="status"
       >
-        {props.notebook.cells.length.toLocaleString()} cells · {props.notebook.language}
+        {props.notebook.cells.length.toLocaleString()}{" "}
+        {props.notebook.cells.length === 1 ? "cell" : "cells"} · {props.notebook.language}
         {props.sizeBytes !== undefined
           ? ` · ${props.sizeBytes === 0 ? "0 bytes" : formatAttachmentSize(props.sizeBytes)}`
           : ""}

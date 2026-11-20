@@ -21,8 +21,10 @@ export function composerAttachmentUploadKey(
   return `${environmentId}:${attachmentId}`;
 }
 
+/** Environment and thread ids may both contain colons, so a thread draft key resolves to the longest known environment it starts with. */
 export function composerDraftEnvironmentId(
   draftKey: string,
+  environmentIds: Iterable<EnvironmentId>,
   queuedMessages: ReadonlyArray<{
     readonly messageId: string;
     readonly environmentId: EnvironmentId;
@@ -42,16 +44,21 @@ export function composerDraftEnvironmentId(
     const legacy = parseLegacyNewTaskDraftKey(draftKey);
     return legacy === null ? null : EnvironmentId.make(legacy.environmentId);
   }
-  const separator = draftKey.lastIndexOf(":");
-  return separator > 0 ? EnvironmentId.make(draftKey.slice(0, separator)) : null;
+  let match: EnvironmentId | null = null;
+  for (const environmentId of environmentIds) {
+    if (
+      draftKey.startsWith(`${environmentId}:`) &&
+      (match === null || environmentId.length > match.length)
+    ) {
+      match = environmentId;
+    }
+  }
+  return match;
 }
 
 type UploadServerConfig = {
   readonly environment: {
-    readonly capabilities: Pick<
-      ServerConfig["environment"]["capabilities"],
-      "attachmentUploads" | "fileAttachments"
-    >;
+    readonly capabilities: Pick<ServerConfig["environment"]["capabilities"], "fileAttachments">;
   };
 };
 
@@ -61,7 +68,7 @@ export function canUploadComposerAttachment(
 ): boolean {
   const capabilities = config?.environment.capabilities;
   return (
-    capabilities?.attachmentUploads === true &&
+    capabilities !== undefined &&
     (attachment.type === "image" ||
       (capabilities.fileAttachments !== undefined &&
         attachment.sizeBytes <=
@@ -96,6 +103,30 @@ export function composerAttachmentsStillUploading(input: {
     const state = input.states[composerAttachmentUploadKey(input.environmentId, attachment.id)];
     return state?.status !== "ready" && state?.status !== "failed";
   });
+}
+
+/** Changes when an upload starts or settles, not on its progress ticks. */
+export function uploadingComposerAttachmentKeys(
+  states: Readonly<Record<string, ComposerAttachmentUploadState>>,
+): string {
+  return Object.keys(states)
+    .filter((key) => states[key]?.status === "uploading")
+    .sort()
+    .join("\n");
+}
+
+/** A queued message waits for the worker's upload instead of starting a second one. */
+export function queuedAttachmentsStillUploading(input: {
+  readonly environmentId: EnvironmentId;
+  readonly attachments: ReadonlyArray<DraftComposerAttachment>;
+  readonly states: Readonly<Record<string, ComposerAttachmentUploadState>>;
+}): boolean {
+  return input.attachments.some(
+    (attachment) =>
+      attachment.uploadedAttachmentId === undefined &&
+      input.states[composerAttachmentUploadKey(input.environmentId, attachment.id)]?.status ===
+        "uploading",
+  );
 }
 
 export function createComposerAttachmentUploadQueue(options: {

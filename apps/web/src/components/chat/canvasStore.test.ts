@@ -31,17 +31,17 @@ const preview: ChatCanvasPreview = {
 
 describe("chat canvas model", () => {
   it("shows the details card inline only where the canvas fits it beside the chat", () => {
-    const resolve = (width: number) =>
+    const resolve = (width: number, narrowestWidth = width) =>
       resolveChatCanvasModel({
-        measurements: measurements(width),
+        measurements: { ...measurements(width), narrowestWidth },
         detailsCardMeasurement: null,
         threadRef,
         preview: null,
         detailsCardInlineOpen: true,
-        centerBesideDetails: false,
       }).detailsCardMode;
     expect(resolve(1400)).toBe("inline");
     expect(resolve(900)).toBe("popover");
+    expect(resolve(1400, 900)).toBe("popover");
   });
 
   it("moves the card into a popover when a preview below it leaves too little height", () => {
@@ -52,7 +52,6 @@ describe("chat canvas model", () => {
         threadRef,
         preview: { ...preview, position: { x: 760, y: 150 }, lastInteraction: "drag" },
         detailsCardInlineOpen: true,
-        centerBesideDetails: false,
       });
     const model = resolve(400);
     expect(model.layout.overlapsDetailsCard).toBe(true);
@@ -66,7 +65,6 @@ describe("chat canvas model", () => {
       threadRef,
       preview: { ...preview, position: { x: 760, y: 150 }, lastInteraction: "drag" },
       detailsCardInlineOpen: true,
-      centerBesideDetails: false,
     });
     expect(model.layout.overlapsDetailsCard).toBe(false);
     expect(model.detailsCardMode).toBe("inline");
@@ -82,5 +80,8 @@ describe("chat canvas model", () => {
     store.getState().measureDetailsCard({ threadRef, width: 280, fullContentHeight: 300 });
     expect(measured.measurements).toBe(before.measurements);
     expect(store.getState()).toBe(measured);
+    store.getState().setMeasurements({ ...measurements(1400), narrowestWidth: 900 });
+    expect(store.getState().measurements.narrowestWidth).toBe(900);
+    expect(store.getState()).not.toBe(measured);
   });
 });

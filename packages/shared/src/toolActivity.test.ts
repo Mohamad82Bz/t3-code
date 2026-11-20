@@ -27,7 +27,7 @@ describe("toolActivity", () => {
     );
   });
 
-  it("keeps the first non-empty rawInput when a later update is empty", () => {
+  it("keeps the previous rawInput when a later update is empty and replaces it otherwise", () => {
     expect(
       mergeToolActivityData({ rawInput: { path: "src/a.ts" } }, { rawInput: {}, kind: "read" }),
     ).toEqual({
@@ -36,7 +36,7 @@ describe("toolActivity", () => {
     });
     expect(
       mergeToolActivityData({ rawInput: { path: "src/a.ts" } }, { rawInput: { startLine: 4 } }),
-    ).toEqual({ rawInput: { path: "src/a.ts", startLine: 4 } });
+    ).toEqual({ rawInput: { startLine: 4 } });
   });
 
   it("recognizes computer-use REPL calls before result metadata exists", () => {

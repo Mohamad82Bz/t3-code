@@ -4,6 +4,7 @@ import { createContext, useContext, useRef, useState } from "react";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { middleTruncateAttachmentName } from "../composerInlineChip";
+import { Spinner } from "../ui/spinner";
 
 export const AudioPreviewUnmountContext = createContext<((audio: HTMLAudioElement) => void) | null>(
   null,
@@ -15,6 +16,7 @@ type AudioPreviewProps = {
   readonly revision?: string | null;
   readonly onError?: () => void;
   readonly compact?: boolean;
+  readonly variant?: "chip" | "bubble";
   readonly failed?: boolean;
   readonly onOpen?: (() => void) | undefined;
   readonly onRetry?: () => void;
@@ -111,7 +113,8 @@ function AudioChip(props: AudioPreviewProps) {
     <ContextChip
       kind="file"
       {...(props.failed ? { state: "invalid" as const } : {})}
-      className="relative isolate overflow-hidden has-[button:enabled]:hover:border-(--context-chip-border-hover) has-[button:enabled]:hover:bg-(--context-chip-accent)/17"
+      {...(props.variant === "bubble" ? { shape: "bubble" as const } : {})}
+      className="relative isolate overflow-hidden"
       title={props.failed ? "Audio unavailable. Open the file or retry playback." : props.name}
     >
       <span
@@ -120,7 +123,7 @@ function AudioChip(props: AudioPreviewProps) {
         style={{ width: `${duration > 0 ? Math.min(100, (elapsed / duration) * 100) : 0}%` }}
       />
       <ContextChipAction
-        className="ml-0 [&_svg]:size-[1.17em]"
+        className="ml-0 [&_svg]:size-[1em]"
         aria-label={`${props.failed ? "Audio unavailable. " : ""}${action} ${props.name}`}
         disabled={loading}
         onClick={() => {
@@ -138,9 +141,9 @@ function AudioChip(props: AudioPreviewProps) {
             });
         }}
       >
-        <Icon aria-hidden className={loading && props.src ? "animate-spin" : undefined} />
+        {loading && props.src ? <Spinner aria-hidden /> : <Icon aria-hidden />}
       </ContextChipAction>
-      <ContextChipLabel className="max-w-72">
+      <ContextChipLabel className={props.variant === "bubble" ? "flex-1" : "max-w-72"}>
         {open ? (
           <button
             type="button"
@@ -154,7 +157,7 @@ function AudioChip(props: AudioPreviewProps) {
           middleTruncateAttachmentName(props.name)
         )}
       </ContextChipLabel>
-      <span className="shrink-0 text-3xs text-current">
+      <span dir="ltr" className="shrink-0 self-baseline text-3xs text-current">
         {props.failed
           ? "Unavailable"
           : loading
