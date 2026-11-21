@@ -74,6 +74,7 @@
     "lucide-react": "^0.564.0",
     "mdast-util-from-markdown": "^2.0.3",
     "micromark-util-combine-extensions": "^2.0.1",
+    "open-bot-avatar": "0.2.0",
     "pdfjs-dist": "6.4.299",
     "pele": "catalog:",
     "react": "catalog:",

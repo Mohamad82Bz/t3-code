@@ -31,13 +31,18 @@ one until you pick another. Settings that support multiple environments fan out 
 
 ## Bots
 
-On web or desktop, open **Settings → Bots**, select an environment, and turn on **Enable Bots**.
-Create a bot and choose a model from that environment. Each bot starts with its own workspace and
-an empty T3 thread. It does not run until you send a message.
+Open **Settings → Bots**, select an environment, and turn on **Enable Bots**. Create a bot and
+choose a model from that environment, or open **Bot Creator** and describe the job. Each new bot
+gets its own workspace and an empty T3 thread. It does not run until you send a message.
 
-Pin up to six bots to the launcher on the left of the conversation. When the gutter is narrow,
-open the launcher from its icon where there is room, or open any bot from Settings. On a bot’s
-thread, **Configure bot** opens that bot’s settings.
+On web and desktop, bot threads are in a collapsed **Bots** section in the sidebar. Pin up to six
+bots to the launcher on the left of the conversation. Drag an avatar or use **Reorder bots** to
+change the saved order. On narrow windows, open the launcher from the icon in the same spot. On
+mobile, pinned bots appear above the thread list; reorder them from **Settings → Bots**.
+
+Use **Edit avatar** to choose a shape or object, pick a color, crop an uploaded image, or import an
+Open Bot Avatar definition. An existing bot's model can also draw a new object for you to preview
+and save. On web and desktop, avatars react to the bot's activity and respect reduced motion.
 
 Set standing instructions and facts to carry into later turns. For a bot using Claude, you can set
 an optional auto-compact window just for that bot. Leave it empty to inherit the provider setting.

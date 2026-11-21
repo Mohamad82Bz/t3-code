@@ -11,7 +11,9 @@ describe("Bots dock placement", () => {
       width: 200,
     });
     expect(resolveBotsDockLayout({ ...canvas, chatLeft: 100 })).toEqual({ inline: false });
-    expect(resolveBotsDockLayout({ ...canvas, chatLeft: 32 })).toBeNull();
+    expect(resolveBotsDockLayout({ ...canvas, width: 380, chatLeft: 0 })).toEqual({
+      inline: false,
+    });
   });
 
   it("uses a popover when there isn't room above quotas or beside the preview", () => {

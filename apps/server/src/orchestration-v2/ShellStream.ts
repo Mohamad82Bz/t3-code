@@ -209,6 +209,7 @@ function shellTrimFacts(rows: ReadonlyArray<ShellTrimRow>): ShellTrimFacts {
       subagentThreadIds.add(row.id);
       if (row.lineage.parentThreadId) subagentParentIds.add(row.lineage.parentThreadId);
     } else if (
+      !row.id.startsWith("bot:") &&
       isListedThreadLineage(row.lineage) &&
       row.settledOverride === "settled" &&
       row.settledAt !== null

@@ -446,13 +446,21 @@ import {
   SourceControlSignInResult,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
-import { BotMutation, BotOperationError, BotProfile, BotsSnapshot } from "./bots.ts";
+import {
+  BotAppearance,
+  BotAvatarDrawingInput,
+  BotMutation,
+  BotOperationError,
+  BotProfile,
+  BotsSnapshot,
+} from "./bots.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
   botsSubscribe: "bots.subscribe",
   botsSetEnabled: "bots.setEnabled",
   botsMutate: "bots.mutate",
+  botsDrawAvatar: "bots.drawAvatar",
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
@@ -1460,6 +1468,11 @@ const WsBotsSetEnabledRpc = Rpc.make(WS_METHODS.botsSetEnabled, {
   success: Schema.Void,
   error: botRpcError,
 });
+const WsBotsDrawAvatarRpc = Rpc.make(WS_METHODS.botsDrawAvatar, {
+  payload: BotAvatarDrawingInput,
+  success: BotAppearance,
+  error: botRpcError,
+});
 const WsBotsMutateRpc = Rpc.make(WS_METHODS.botsMutate, {
   payload: BotMutation,
   success: Schema.NullOr(BotProfile),
@@ -2337,6 +2350,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsBotsSubscribeRpc,
   WsBotsSetEnabledRpc,
   WsBotsMutateRpc,
+  WsBotsDrawAvatarRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

@@ -1,7 +1,12 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { type ChatAttachment, type ModelSelection, TextGenerationError } from "@t3tools/contracts";
+import {
+  BotAvatarDrawing,
+  type ChatAttachment,
+  type ModelSelection,
+  TextGenerationError,
+} from "@t3tools/contracts";
 import { formatGeneratedBranchName, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 import { extractJsonObject } from "@t3tools/shared/schemaJson";
 
@@ -194,7 +199,26 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     });
   });
 
+  const generateBotAvatar: NonNullable<ProviderTextGeneration["generateBotAvatar"]> = Effect.fn(
+    name + ".generateBotAvatar",
+  )(function* (input) {
+    return yield* run({
+      operation: "generateBotAvatar",
+      cwd: input.cwd,
+      modelSelection: input.modelSelection,
+      outputSchema: BotAvatarDrawing,
+      prompt: [
+        "Draw a tiny friendly bot avatar based on the description below. Do not use tools. Return JSON with name, path, x, y, and spacing only.",
+        "The path is one closed SVG silhouette in a 100 by 100 viewbox. Keep all coordinates, including curve control points, within 12..88. Use broad, recognizable shapes with an uninterrupted area around both eyes. No tiny details, text, URL, markup, transforms or colors.",
+        "x and y are the center of the two eyes, inside the silhouette. spacing is their horizontal separation, usually 15 to 22.",
+        "Subject:",
+        input.description,
+      ].join(" "),
+    });
+  });
+
   return {
+    generateBotAvatar,
     generateCommitMessage,
     generatePrContent,
     generateBranchName,

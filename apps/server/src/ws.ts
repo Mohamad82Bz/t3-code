@@ -1998,6 +1998,7 @@ export const layerWsRpc = (
         [WS_METHODS.botsSubscribe]: () => bots.subscribe(),
         [WS_METHODS.botsSetEnabled]: (input) => bots.setEnabled(input.enabled),
         [WS_METHODS.botsMutate]: (input) => bots.mutate(input),
+        [WS_METHODS.botsDrawAvatar]: (input) => bots.drawAvatar(input),
         [WS_METHODS.issueTrackersList]: () => issueTrackers.list,
         [WS_METHODS.issueTrackersConnect]: (input) => issueTrackers.connect(input),
         [WS_METHODS.issueTrackersBindProject]: (input) => issueTrackers.bindProject(input),

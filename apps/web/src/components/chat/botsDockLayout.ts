@@ -11,7 +11,7 @@ export function resolveBotsDockLayout({
 }) {
   const inset = 12;
   const availableWidth = chatLeft - inset * 2;
-  if (width < 640 || height < 160 || availableWidth < 36) return null;
+  if (width < 320 || height < 64) return null;
   const overlapsPreview = (dockWidth: number, dockHeight: number) =>
     preview !== null &&
     preview.x < inset + dockWidth &&

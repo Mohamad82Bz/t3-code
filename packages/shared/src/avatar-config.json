@@ -1,0 +1,176 @@
+{
+  "frameRadiusMultiplier": 1.1,
+  "specialShapes": [
+    {
+      "id": "t3",
+      "name": "T3",
+      "color": "purple"
+    }
+  ],
+  "shapes": [
+    "ball",
+    "blob",
+    "pebble",
+    "squircle",
+    "tablet",
+    "capsule",
+    "hex",
+    "gem",
+    "wedge",
+    "drop",
+    "cloud",
+    "flower",
+    "clover",
+    "star",
+    "spark",
+    "heart",
+    "dome"
+  ],
+  "shapeAliases": {
+    "sphere": "ball",
+    "hexagon": "hex",
+    "sparkle": "spark",
+    "teardrop": "drop",
+    "egg": "pebble",
+    "bean": "pebble",
+    "cylinder": "capsule",
+    "crystal": "gem",
+    "shield": "gem",
+    "arch": "dome",
+    "leaf": "drop"
+  },
+  "colors": {
+    "black": "#000000",
+    "white": "#f2f2f0",
+    "brown": "#936439",
+    "red": "#FF263C",
+    "orange": "#FF6700",
+    "amber": "#FFAF38",
+    "green": "#00C972",
+    "teal": "#1CC3B0",
+    "blue": "#1084FE",
+    "purple": "#A97EFE",
+    "pink": "#FF5EB1",
+    "gray": "#777777"
+  },
+  "states": {
+    "sleeping": "sleeping",
+    "waking": "waking",
+    "idle": "idle",
+    "listening": "listening",
+    "thinking": "thinking",
+    "searching": "searching",
+    "working": "working",
+    "excited": "excited",
+    "surprised": "surprised",
+    "suspicious": "suspicious",
+    "angry": "angry",
+    "drowsy": "drowsy",
+    "happy": "happy",
+    "curious": "curious",
+    "confused": "confused",
+    "bored": "bored",
+    "proud": "proud",
+    "shy": "shy",
+    "sad": "sad",
+    "laughing": "laughing",
+    "scared": "scared",
+    "playful": "playful",
+    "celebrate": "celebrate",
+    "orbit": "orbit",
+    "radar": "radar",
+    "progress": "progress",
+    "spawning": "spawning",
+    "humming": "humming",
+    "loading": "loading",
+    "dictating": "dictating",
+    "writing": "writing",
+    "sending": "sending",
+    "receiving": "receiving",
+    "uploading": "uploading",
+    "notifying": "notifying",
+    "alerting": "alerting",
+    "dragging": "dragging",
+    "bouncing": "bouncing",
+    "powering-down": "powering-down",
+    "waiting": "notifying",
+    "failed": "alerting"
+  },
+  "pickerShapes": [
+    "ball",
+    "cloud",
+    "squircle",
+    "spark",
+    "clover",
+    "heart",
+    "flower",
+    "drop",
+    "tablet",
+    "wedge",
+    "dome",
+    "star",
+    "hex",
+    "t3"
+  ],
+  "pickerColors": [
+    {
+      "id": "black",
+      "name": "black",
+      "value": "#000000"
+    },
+    {
+      "id": "brown",
+      "name": "brown",
+      "value": "#936439"
+    },
+    {
+      "id": "red",
+      "name": "red",
+      "value": "#FF263C"
+    },
+    {
+      "id": "orange",
+      "name": "orange",
+      "value": "#FF6700"
+    },
+    {
+      "id": "yellow",
+      "name": "yellow",
+      "value": "#FF9800"
+    },
+    {
+      "id": "green",
+      "name": "green",
+      "value": "#00C972"
+    },
+    {
+      "id": "cyan",
+      "name": "cyan",
+      "value": "#00BCA6"
+    },
+    {
+      "id": "blue",
+      "name": "blue",
+      "value": "#1084FE"
+    },
+    {
+      "id": "violet",
+      "name": "violet",
+      "value": "#9159FE"
+    },
+    {
+      "id": "magenta",
+      "name": "magenta",
+      "value": "#FF309B"
+    },
+    {
+      "id": "gray",
+      "name": "gray",
+      "value": "#777777"
+    }
+  ],
+  "defaultAvatar": {
+    "shape": "t3",
+    "color": "violet"
+  }
+}

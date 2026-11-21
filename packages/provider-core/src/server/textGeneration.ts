@@ -1,4 +1,5 @@
 import type {
+  BotAvatarDrawing,
   BranchNamingOptions,
   ChatAttachment,
   ModelSelection,
@@ -115,6 +116,12 @@ export interface TranscriptionPostProcessingResult {
 }
 
 export interface ProviderTextGeneration {
+  readonly generateBotAvatar?: (input: {
+    cwd: string;
+    description: string;
+    modelSelection: ModelSelection;
+    projectId: ProjectId;
+  }) => Effect.Effect<BotAvatarDrawing, TextGenerationError>;
   readonly generateTranscriptionPostProcessing: (
     input: TranscriptionPostProcessingInput,
   ) => Effect.Effect<TranscriptionPostProcessingResult, TextGenerationError>;

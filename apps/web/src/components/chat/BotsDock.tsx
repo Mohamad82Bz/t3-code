@@ -6,15 +6,27 @@ import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useGT } from "gt-react";
-import { BotIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  BotIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  GripIcon,
+} from "lucide-react";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
-import { botsSnapshotAtom } from "../../state/bots";
-import { environmentThreadShells } from "../../state/threads";
+import { useEffect, useState } from "react";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { botAvatarActivity } from "../bots/avatarActivity";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { botsSnapshotAtom, mutateBot } from "../../state/bots";
+import * as Option from "effect/Option";
+import { environmentThreadShells, useEnvironmentThread } from "../../state/threads";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { BotAvatar } from "./BotAvatar";
+import { BotAvatar, botAppearance } from "./BotAvatar";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { resolveBotsDockLayout } from "./botsDockLayout";
 
@@ -36,7 +48,7 @@ const pinnedBotActivity = Atom.family((environmentId: EnvironmentId) =>
             : threadRuntimeIsActive(thread?.runtime)
               ? "working"
               : null;
-        return { bot, state } as const;
+        return { bot, state, thread } as const;
       });
   }),
 );
@@ -51,6 +63,10 @@ export function BotsDock({
   const gt = useGT();
   const canvas = useChatCanvas();
   const bots = useAtomValue(pinnedBotActivity(environmentId));
+  const canReorder = useAtomValue(mutateBot.permissionAtom(environmentId));
+  const mutate = useAtomCommand(mutateBot);
+  const [orderMode, setOrderMode] = useState(false);
+  const [dragId, setDragId] = useState<ThreadId | null>(null);
   const [collapsed, setCollapsed] = useLocalStorage("bots-dock-collapsed", false, Schema.Boolean);
   const layout =
     canvas &&
@@ -61,6 +77,10 @@ export function BotsDock({
     });
   if (layout === null || bots === null) return null;
   const open = !layout.inline || !collapsed;
+  const move = (threadId: ThreadId, before: ThreadId | null) => {
+    if (before !== threadId)
+      void mutate({ environmentId, input: { type: "move", threadId, before } });
+  };
   const attentionThread = bots.find(({ state }) => state === "approval" || state === "question")
     ?.bot.threadId;
   const statusLabel = (state: (typeof bots)[number]["state"]) => {
@@ -89,6 +109,17 @@ export function BotsDock({
             {gt("All bots")}
           </Button>
         )}
+        {open && canReorder && bots.length > 1 ? (
+          <Button
+            variant="ghost-muted"
+            size="icon-micro"
+            aria-label={gt("Reorder bots")}
+            aria-pressed={orderMode}
+            onClick={() => setOrderMode(!orderMode)}
+          >
+            <GripIcon />
+          </Button>
+        ) : null}
         {layout.inline ? (
           <Button
             variant="ghost-muted"
@@ -114,19 +145,62 @@ export function BotsDock({
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-1 border-t border-border/60 p-2">
-            {bots.map(({ bot, state }) => {
+            {bots.map(({ bot, state, thread }, index) => {
               const status = statusLabel(state);
               return (
-                <BotTile
+                <div
                   key={bot.threadId}
-                  bot={bot}
-                  environmentId={environmentId}
-                  selected={bot.threadId === threadId}
-                  status={status}
-                  working={state === "working"}
-                  attention={state === "approval" || state === "question"}
-                  showBubble={bot.threadId === attentionThread}
-                />
+                  className="min-w-0"
+                  onDragOver={(event) => {
+                    if (dragId !== null) event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    if (dragId === null) return;
+                    event.preventDefault();
+                    const from = bots.findIndex(({ bot }) => bot.threadId === dragId);
+                    if (from >= 0 && from !== index)
+                      move(
+                        dragId,
+                        (from < index ? bots[index + 1] : bots[index])?.bot.threadId ?? null,
+                      );
+                    setDragId(null);
+                  }}
+                >
+                  <BotTile
+                    bot={bot}
+                    environmentId={environmentId}
+                    selected={bot.threadId === threadId}
+                    status={status}
+                    thread={thread}
+                    draggable={canReorder && bots.length > 1}
+                    onDragStart={() => setDragId(bot.threadId)}
+                    onDragEnd={() => setDragId(null)}
+                    attention={state === "approval" || state === "question"}
+                    showBubble={bot.threadId === attentionThread}
+                  />
+                  {orderMode && canReorder ? (
+                    <div className="flex justify-center gap-1">
+                      <Button
+                        size="icon-micro"
+                        variant="ghost-muted"
+                        aria-label={gt("Move bot earlier")}
+                        disabled={index === 0}
+                        onClick={() => move(bot.threadId, bots[index - 1]?.bot.threadId ?? null)}
+                      >
+                        <ArrowLeftIcon />
+                      </Button>
+                      <Button
+                        size="icon-micro"
+                        variant="ghost-muted"
+                        aria-label={gt("Move bot later")}
+                        disabled={index === bots.length - 1}
+                        onClick={() => move(bot.threadId, bots[index + 2]?.bot.threadId ?? null)}
+                      >
+                        <ArrowRightIcon />
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -165,7 +239,10 @@ function BotTile({
   environmentId,
   selected,
   status,
-  working,
+  thread,
+  draggable,
+  onDragStart,
+  onDragEnd,
   attention,
   showBubble,
 }: {
@@ -173,27 +250,64 @@ function BotTile({
   environmentId: EnvironmentId;
   selected: boolean;
   status: string | null;
-  working: boolean;
+  thread: EnvironmentThreadShell | null;
+  draggable: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   attention: boolean;
   showBubble: boolean;
 }) {
+  const [now, setNow] = useState(Date.now);
+  const latestStamp = Math.max(
+    Date.parse(thread?.latestRun?.completedAt ?? "") || 0,
+    Date.parse(thread?.latestUserMessageAt ?? "") || 0,
+  );
+  const currentThread = useEnvironmentThread(
+    selected ? environmentId : null,
+    selected ? bot.threadId : null,
+  );
+  const state = botAvatarActivity(
+    thread,
+    Math.max(now, latestStamp),
+    Option.getOrUndefined(currentThread.data),
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moods also change on elapsed idle time, without a server event
+  useEffect(() => {
+    if (state.until === undefined) return;
+    const timer = window.setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, state.until - Date.now()) + 15,
+    );
+    return () => window.clearTimeout(timer);
+  }, [state.until]);
   return (
     <Link
       to="/$environmentId/$threadId"
       params={buildThreadRouteParams(scopeThreadRef(environmentId, bot.threadId))}
       aria-current={selected ? "page" : undefined}
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return;
+        event.dataTransfer.setData("application/x-t3-bot", bot.threadId);
+        event.dataTransfer.effectAllowed = "move";
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
       className={cn(
         "relative flex min-w-0 flex-col items-center gap-1 rounded-md px-1.5 pb-1.5 pt-5 text-xs text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         selected && "bg-accent text-accent-foreground",
       )}
     >
-      <span
-        className={cn(
-          "relative rounded-full",
-          working && "ring-1 ring-ring ring-offset-2 ring-offset-background",
-        )}
-      >
-        <BotAvatar name={bot.name} accent={bot.accent} />
+      <span className="relative">
+        <BotAvatar
+          appearance={botAppearance(bot)}
+          state={state.state}
+          size={40}
+          animate={
+            selected ||
+            (state.state !== "idle" && state.state !== "sleeping" && state.state !== "drowsy")
+          }
+        />
         {attention ? (
           <span
             aria-hidden

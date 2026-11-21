@@ -1,3 +1,4 @@
+import * as BotsToolkit from "./toolkits/bots.ts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -1469,4 +1470,10 @@ export const layerToolSearch = Layer.mergeAll(
   layerDeferredListing,
 ).pipe(Layer.provide(layerToolExposure));
 
-export const layer = layerMcpTransport(Layer.mergeAll(layerTools, layerToolSearch));
+export const layer = layerMcpTransport(
+  Layer.mergeAll(
+    layerTools,
+    layerToolSearch,
+    toolkitRegistration(BotsToolkit.BotToolkit, BotsToolkit.layer),
+  ),
+);

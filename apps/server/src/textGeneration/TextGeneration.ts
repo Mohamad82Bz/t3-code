@@ -47,7 +47,8 @@ type TextGenerationOp =
   | "generateBranchName"
   | "generateThreadTitle"
   | "generateReviewGuide"
-  | "generateTranscriptionPostProcessing";
+  | "generateTranscriptionPostProcessing"
+  | "generateBotAvatar";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -182,6 +183,21 @@ export const make = Effect.gen(function* () {
         input.modelSelection,
         input.projectId,
         (service, modelSelection) => service.generateBranchName({ ...input, modelSelection }),
+      );
+    }),
+    generateBotAvatar: Effect.fn("TextGeneration.generateBotAvatar")(function (input) {
+      return generate(
+        "generateBotAvatar",
+        input.modelSelection,
+        input.projectId,
+        (service, modelSelection) =>
+          service.generateBotAvatar?.({ ...input, modelSelection }) ??
+          Effect.fail(
+            new TextGenerationError({
+              operation: "generateBotAvatar",
+              detail: "This provider does not draw object avatars.",
+            }),
+          ),
       );
     }),
     generateReviewGuide: Effect.fn("TextGeneration.generateReviewGuide")(function (input) {

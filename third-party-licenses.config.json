@@ -1,6 +1,22 @@
 {
   "customNotices": [
     {
+      "name": "Threebot animated avatars",
+      "bundles": ["desktop", "web"],
+      "license": "MIT",
+      "sourceUrl": "https://github.com/RokaSwK/threebot/tree/v0.1.14",
+      "noticeFile": "apps/web/src/components/bots/threebot/LICENSE.threebot"
+    },
+    {
+      "name": "Open Bot Avatar gallery",
+      "bundles": ["desktop", "web"],
+      "license": "MIT",
+      "sourceUrl": "https://github.com/DominikScholz/open-bot-avatar",
+      "generatedNotices": [
+        { "licenseId": "MIT", "copyrights": ["Copyright (c) 2026 Dominik Scholz"] }
+      ]
+    },
+    {
       "bundles": ["desktop", "mobile", "web"],
       "license": "MIT",
       "name": "GitHub gemoji alias data",

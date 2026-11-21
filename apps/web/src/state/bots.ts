@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { connectionAtomRuntime } from "../connection/runtime";
-import { serverEnvironment } from "./server";
+import { environmentServerConfigsAtom, serverEnvironment } from "./server";
 
 const subscribe = createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
   label: "environment-bots",
@@ -31,4 +31,19 @@ export const setBotsEnabled = createEnvironmentRpcCommand(connectionAtomRuntime,
 export const mutateBot = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "bots:mutate",
   tag: WS_METHODS.botsMutate,
+});
+
+export const sidebarBotKeysAtom = Atom.make((get) => {
+  const keys = new Set<string>();
+  for (const [environmentId, config] of get(environmentServerConfigsAtom)) {
+    if (config.environment.capabilities.bots !== true) continue;
+    const snapshot = AsyncResult.getOrElse(get(botsSnapshotAtom(environmentId)), () => null);
+    for (const bot of snapshot?.bots ?? []) keys.add(environmentId + ":" + bot.threadId);
+  }
+  return keys;
+});
+
+export const drawBotAvatar = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "bots:draw-avatar",
+  tag: WS_METHODS.botsDrawAvatar,
 });

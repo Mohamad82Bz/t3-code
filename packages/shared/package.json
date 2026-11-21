@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./botAvatarDefinition": "./src/botAvatarDefinition.ts",
+    "./botAvatars": "./src/botAvatars.ts",
     "./fileChangeStats": {
       "types": "./src/fileChangeStats.ts",
       "import": "./src/fileChangeStats.ts"

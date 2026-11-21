@@ -158,6 +158,8 @@ import { environmentPresentations } from "../state/presentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { environmentProjects } from "../state/projects";
 import { threadEnvironment } from "../state/threads";
+import { sidebarBotKeysAtom } from "../state/bots";
+import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { useOlderSettledShelf, useOlderSettledShelfGrowth } from "../state/olderSettledShelf";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
@@ -458,6 +460,12 @@ function useSidebarThreads(input: {
     inboxReturns.subscribe,
     inboxReturns.getSnapshot,
   );
+  const botKeys = useAtomValue(sidebarBotKeysAtom);
+  const [botsExpanded, setBotsExpanded] = useLocalStorage(
+    "sidebar-bots-expanded",
+    false,
+    Schema.Boolean,
+  );
   const nowMinute = useNowMinute();
   // Minute-quantized clocks would delay second-precise snooze wakes by up to a minute.
   const snoozeWakeClock = useSnoozeWakeClock(threads);
@@ -489,8 +497,20 @@ function useSidebarThreads(input: {
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
 
+  const botThreads = sortThreadsForSidebar(
+    threads.filter(
+      (thread) =>
+        thread.archivedAt === null &&
+        botKeys.has(threadShellKey(thread)) &&
+        !excludedEnvironmentIds.includes(thread.environmentId),
+    ),
+  );
+  const visibleBotThreads = botsExpanded ? botThreads : EMPTY_THREADS;
+  const regularThreads = botKeys.size
+    ? threads.filter((thread) => !botKeys.has(threadShellKey(thread)))
+    : threads;
   const partition = partitionSidebarThreads({
-    threads,
+    threads: regularThreads,
     scopedProjectKeys,
     excludedEnvironmentIds,
     delegatedUnderParent,
@@ -564,6 +584,7 @@ function useSidebarThreads(input: {
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
     ...renderedSettledThreads,
+    ...visibleBotThreads,
   ];
   const sectionByThreadKey = new Map<string, SidebarSection>();
   for (const [list, section] of [
@@ -577,6 +598,10 @@ function useSidebarThreads(input: {
   }
   return {
     ...partition,
+    botThreads,
+    visibleBotThreads,
+    botsExpanded,
+    toggleBots: () => setBotsExpanded(!botsExpanded),
     threads,
     workingShelfEnabled,
     searchableThreads: [
@@ -585,6 +610,7 @@ function useSidebarThreads(input: {
       ...workingThreads,
       ...snoozedThreads,
       ...settledThreads,
+      ...botThreads,
     ],
     settledVisibleCount,
     settledCount,
@@ -1342,6 +1368,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
+    botThreads,
+    visibleBotThreads,
+    botsExpanded,
+    toggleBots,
     hiddenSettledCount,
     showMoreSettled,
     settledShelfExpanded,
@@ -1983,7 +2013,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         activeThreads.length +
         workingThreads.length +
         snoozedThreads.length +
-        settledCount ===
+        settledCount +
+        botThreads.length ===
         0
     ) {
       return [];
@@ -2038,15 +2069,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       ?.map((folder) => `${folder.group.projectKey}:${folder.threads.length}`)
       .join("\n") ?? "",
     visibleDraftSessionCount,
+    visibleBotThreads.map(threadShellKey).join("|"),
     routeDraftIdForRows ?? "",
   ].join("\0");
   const listMotionAnimate =
     dragState === null && sidebarListItems.length + visibleDraftSessionCount > 0;
   // Cache on both fields so layout-key changes trigger the effect even when animate is unchanged.
   const listMotionPass = { layoutKey: listMotionLayoutKey, animate: listMotionAnimate };
-  const shelfExpansionKey = [workingShelfExpanded, snoozedShelfExpanded, settledShelfExpanded].join(
-    ":",
-  );
+  const shelfExpansionKey = [
+    workingShelfExpanded,
+    snoozedShelfExpanded,
+    settledShelfExpanded,
+    botsExpanded,
+  ].join(":");
   const previousShelfExpansionKeyRef = useRef(shelfExpansionKey);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- records moved rows and updates list motion after each layout-affecting commit
   useLayoutEffect(() => {
@@ -3714,6 +3749,37 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               />,
                             );
                             break;
+                        }
+                      }
+                      if (botThreads.length > 0) {
+                        items.push(
+                          <li
+                            key="bots-shelf"
+                            className="relative mx-0.5 h-8 list-none"
+                            data-thread-selection-safe
+                          >
+                            <CollapsibleSectionHeader
+                              data-sidebar-row="shelf:bots"
+                              expanded={botsExpanded}
+                              onClick={toggleBots}
+                              tone="muted"
+                              accessory={
+                                <span className="font-normal tabular-nums">
+                                  {botThreads.length}
+                                </span>
+                              }
+                            >
+                              {gt("Bots")}
+                            </CollapsibleSectionHeader>
+                          </li>,
+                        );
+                        for (const thread of visibleBotThreads) {
+                          const section = effectiveSnoozed(thread, { now: snoozeNow })
+                            ? "snoozed"
+                            : thread.settledOverride === "settled"
+                              ? "settled"
+                              : "active";
+                          items.push(renderThreadRow(thread, section, "shelf:bots"));
                         }
                       }
                       return items;

@@ -41,6 +41,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.botsSubscribe]: "bots",
   [WS_METHODS.botsSetEnabled]: "bots",
   [WS_METHODS.botsMutate]: "bots",
+  [WS_METHODS.botsDrawAvatar]: "bots",
   [WS_METHODS.serverProbe]: "server",
   [WS_METHODS.serverGetConfig]: "server",
   [WS_METHODS.serverGetNpmRelease]: "server",

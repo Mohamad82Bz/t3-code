@@ -1,5 +1,9 @@
 import { useGT, useMessages } from "gt-react-native";
 
+import { useNavigation } from "@react-navigation/native";
+import { openSettings } from "../settings/settings-navigation";
+import { mobileBotProfilesAtom } from "../../state/bots";
+import { PinnedBots } from "./PinnedBots";
 import { useContentTopInset } from "../../components/ui/useBarInset";
 import { usePaneRole } from "../../components/ui/Pane";
 import { ScreenContent } from "../../components/ui/ScreenContent";
@@ -194,6 +198,29 @@ function renderHomeScrollView(props: ScrollViewProps) {
 }
 
 export function HomeScreen(props: HomeScreenProps) {
+  const navigation = useNavigation();
+  const profiles = useAtomValue(mobileBotProfilesAtom);
+  const registered = new Set(
+    [...profiles].flatMap(([environmentId, bots]) =>
+      bots.map((bot) => scopedThreadKey(environmentId, bot.threadId)),
+    ),
+  );
+  const threadByKey = new Map(
+    props.threads.map(
+      (thread) => [scopedThreadKey(thread.environmentId, thread.id), thread] as const,
+    ),
+  );
+  const pinnedBots = [...profiles].flatMap(([environmentId, bots]) => {
+    if (props.selectedEnvironmentId !== null && props.selectedEnvironmentId !== environmentId)
+      return [];
+    return bots
+      .filter((bot) => bot.pinned)
+      .slice(0, 6)
+      .flatMap((bot) => {
+        const thread = threadByKey.get(scopedThreadKey(environmentId, bot.threadId));
+        return thread === undefined || thread.archivedAt !== null ? [] : [{ bot, thread }];
+      });
+  });
   const gt = useGT();
   const m = useMessages();
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
@@ -419,7 +446,12 @@ export function HomeScreen(props: HomeScreenProps) {
     contentOnlyThreadKeys,
     olderSettledShelf,
   } = useThreadListV2({
-    threads: props.threads,
+    threads:
+      props.searchQuery.trim() || registered.size === 0
+        ? props.threads
+        : props.threads.filter(
+            (thread) => !registered.has(scopedThreadKey(thread.environmentId, thread.id)),
+          ),
     pendingTasks: props.pendingTasks,
     environmentId: props.selectedEnvironmentId,
     projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,
@@ -683,6 +715,14 @@ export function HomeScreen(props: HomeScreenProps) {
   const v2ListHeader = (
     <>
       {listHeader}
+      {!hasSearchQuery && profiles.size > 0 ? (
+        <PinnedBots
+          bots={pinnedBots}
+          selectedThreadKey={selectedThreadKey}
+          onOpen={selectThread}
+          onSettings={() => openSettings(navigation, "SettingsBots")}
+        />
+      ) : null}
       {Platform.OS === "ios" && workspace ? (
         <ThreadListFilters
           gutter={sidebarSurface ? 8 : 0}

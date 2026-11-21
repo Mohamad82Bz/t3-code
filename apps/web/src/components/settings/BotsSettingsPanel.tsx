@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
-  BOT_ACCENTS,
+  BOT_CREATOR_THREAD_ID,
+  DEFAULT_BOT_APPEARANCE,
   DEFAULT_SERVER_SETTINGS,
   type BotProfile,
   type EnvironmentId,
@@ -16,13 +17,17 @@ import { ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { mergeEnvironmentSettings, useClientSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
-import { providerInstanceEntriesFor } from "../../providerInstances";
-import { botsSnapshotAtom, mutateBot, setBotsEnabled } from "../../state/bots";
+import {
+  providerInstanceEntriesFor,
+  resolveDefaultProviderModelSelection,
+} from "../../providerInstances";
+import { botsSnapshotAtom, drawBotAvatar, mutateBot, setBotsEnabled } from "../../state/bots";
 import { useEnvironmentProviders, type EnvironmentPresentation } from "../../state/environments";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
-import { BotAvatar } from "../chat/BotAvatar";
+import { BotAvatar, botAppearance } from "../chat/BotAvatar";
+import { BotAppearanceEditor } from "../bots/BotAppearanceEditor";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { Button } from "../ui/button";
 import {
@@ -57,7 +62,33 @@ export function BotsSettingsPanel() {
 
 function EnvironmentBots({ environment }: { environment: EnvironmentPresentation }) {
   const gt = useGT();
+  const navigate = useNavigate();
   const { environmentId } = environment;
+  const creator = useAtomCommand(mutateBot);
+  const providers = useEnvironmentProviders().get(environmentId) ?? EMPTY_SERVER_PROVIDERS;
+  const creatorModel = resolveDefaultProviderModelSelection(
+    providers,
+    environment.serverConfig?.settings.defaultModelSelection ?? null,
+  );
+  const [openingCreator, setOpeningCreator] = useState(false);
+  const openCreator = async () => {
+    if (!creatorModel || openingCreator) return;
+    setOpeningCreator(true);
+    try {
+      const result = await creator({
+        environmentId,
+        input: { type: "open-creator", modelSelection: creatorModel },
+      });
+      if (result._tag === "Success" && result.value) {
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(scopeThreadRef(environmentId, result.value.threadId)),
+        });
+      }
+    } finally {
+      setOpeningCreator(false);
+    }
+  };
   const result = useAtomValue(botsSnapshotAtom(environmentId));
   const snapshot = AsyncResult.getOrElse(result, () => null);
   const canToggle = useAtomValue(setBotsEnabled.permissionAtom(environmentId));
@@ -108,7 +139,21 @@ function EnvironmentBots({ environment }: { environment: EnvironmentPresentation
             </Button>
           }
         >
-          {snapshot.bots.length === 0 ? (
+          <SettingsRow
+            title={gt("Bot Creator")}
+            description={gt("Describe a job and create a bot for it in chat.")}
+            control={
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!canMutate || !creatorModel || openingCreator}
+                onClick={() => void openCreator()}
+              >
+                {gt("Open chat")}
+              </Button>
+            }
+          />
+          {snapshot.bots.filter((bot) => bot.threadId !== BOT_CREATOR_THREAD_ID).length === 0 ? (
             <SettingsRow
               title={gt("No bots yet")}
               description={gt(
@@ -116,45 +161,47 @@ function EnvironmentBots({ environment }: { environment: EnvironmentPresentation
               )}
             />
           ) : (
-            snapshot.bots.map((bot) => (
-              <SettingsRow
-                key={bot.threadId}
-                id={bot.threadId}
-                title={
-                  <span className="flex items-center gap-2.5">
-                    <BotAvatar {...bot} />
-                    {bot.name}
-                  </span>
-                }
-                description={pinned.includes(bot) ? gt("Pinned to launcher") : undefined}
-                control={
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!canMutate}
-                      onClick={() => setEditing(bot)}
-                    >
-                      {gt("Edit bot")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      render={
-                        <Link
-                          to="/$environmentId/$threadId"
-                          params={buildThreadRouteParams(
-                            scopeThreadRef(environmentId, bot.threadId),
-                          )}
-                        />
-                      }
-                    >
-                      {gt("Open chat")} <ChevronRightIcon />
-                    </Button>
-                  </div>
-                }
-              />
-            ))
+            snapshot.bots
+              .filter((bot) => bot.threadId !== BOT_CREATOR_THREAD_ID)
+              .map((bot) => (
+                <SettingsRow
+                  key={bot.threadId}
+                  id={bot.threadId}
+                  title={
+                    <span className="flex items-center gap-2.5">
+                      <BotAvatar appearance={botAppearance(bot)} />
+                      {bot.name}
+                    </span>
+                  }
+                  description={pinned.includes(bot) ? gt("Pinned to launcher") : undefined}
+                  control={
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!canMutate}
+                        onClick={() => setEditing(bot)}
+                      >
+                        {gt("Edit bot")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        render={
+                          <Link
+                            to="/$environmentId/$threadId"
+                            params={buildThreadRouteParams(
+                              scopeThreadRef(environmentId, bot.threadId),
+                            )}
+                          />
+                        }
+                      >
+                        {gt("Open chat")} <ChevronRightIcon />
+                      </Button>
+                    </div>
+                  }
+                />
+              ))
           )}
         </SettingsSection>
       ) : null}
@@ -193,11 +240,13 @@ function BotProfileEditor({
   const entries = providerInstanceEntriesFor(providers, settings, null);
   const modelDisabledReason = useScopedModelDisabledReason(settings, entries);
   const [name, setName] = useState(bot?.name ?? "");
-  const [accent, setAccent] = useState<BotProfile["accent"]>(bot?.accent ?? "sky");
+  const [avatar, setAvatar] = useState(() => (bot ? botAppearance(bot) : DEFAULT_BOT_APPEARANCE));
+  const [editingAvatar, setEditingAvatar] = useState(false);
+  const drawAvatar = useAtomCommand(drawBotAvatar);
   const [instructions, setInstructions] = useState(bot?.instructions ?? "");
   const [memory, setMemory] = useState(bot?.memory ?? "");
   const [compact, setCompact] = useState(bot?.autoCompactWindow?.toString() ?? "");
-  const validCompact = /^(?:|[1-9]d{5}|1000000)$/.test(compact);
+  const validCompact = /^(?:|[1-9][0-9]{5}|1000000)$/.test(compact);
   const [pinned, setPinned] = useState(bot?.pinned ?? canPin);
   const [selection, setSelection] = useState<ModelSelection | null>(settings.defaultModelSelection);
   const [id] = useState(randomUUID);
@@ -239,7 +288,8 @@ function BotProfileEditor({
     try {
       const profileFields = {
         name: trimmed,
-        accent,
+        accent: bot?.accent ?? "sky",
+        avatar,
         pinned,
         instructions: instructions.trim(),
         memory: memory.trim(),
@@ -271,187 +321,188 @@ function BotProfileEditor({
     }
   };
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose();
-      }}
-    >
-      <DialogPopup>
-        <DialogHeader>
-          <DialogTitle>{bot === null ? gt("Create bot") : gt("Edit bot")}</DialogTitle>
-          <DialogDescription>
-            {bot === null
-              ? gt(
-                  "A bot starts with an empty T3 chat. No model request runs until you send a message.",
-                )
-              : gt(
-                  "Set this bot’s standing instructions, memory, and launcher preferences. To change its model, open the chat.",
-                )}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <div className="flex max-h-[55dvh] flex-col gap-4 overflow-y-auto px-5 py-2">
-            <div className="space-y-2">
-              <label htmlFor={inputId} className="text-sm font-medium">
-                <T>Name</T>
-              </label>
-              <Input
-                id={inputId}
-                value={name}
-                maxLength={48}
-                onChange={(event) => setName(event.currentTarget.value)}
-                required
-              />
-            </div>
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">
-                <T>Avatar color</T>
-              </legend>
-              <div className="flex flex-wrap gap-1.5">
-                {BOT_ACCENTS.map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant={accent === value ? "outline" : "ghost"}
-                    size="icon-lg"
-                    aria-label={botAccentLabel(value, gt)}
-                    aria-pressed={accent === value}
-                    onClick={() => setAccent(value)}
-                  >
-                    <BotAvatar name={name || "B"} accent={value} />
-                  </Button>
-                ))}
+    <>
+      <Dialog
+        open
+        onOpenChange={(open) => {
+          if (!open && !busy) onClose();
+        }}
+      >
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{bot === null ? gt("Create bot") : gt("Edit bot")}</DialogTitle>
+            <DialogDescription>
+              {bot === null
+                ? gt(
+                    "A bot starts with an empty T3 chat. No model request runs until you send a message.",
+                  )
+                : gt(
+                    "Set this bot’s standing instructions, memory, and launcher preferences. To change its model, open the chat.",
+                  )}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
+            }}
+          >
+            <div className="flex max-h-[55dvh] flex-col gap-4 overflow-y-auto px-5 py-2">
+              <div className="space-y-2">
+                <label htmlFor={inputId} className="text-sm font-medium">
+                  <T>Name</T>
+                </label>
+                <Input
+                  id={inputId}
+                  value={name}
+                  maxLength={48}
+                  onChange={(event) => setName(event.currentTarget.value)}
+                  required
+                />
               </div>
-            </fieldset>
-            {bot === null ? (
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  <T>Model</T>
-                </span>
-                {modelSelection === null ? (
-                  <span className="text-sm text-muted-foreground">
-                    <T>No providers available</T>
-                  </span>
-                ) : (
-                  <ProviderModelPicker
-                    environmentId={environmentId}
-                    activeInstanceId={modelSelection.instanceId}
-                    model={modelSelection.model}
-                    lockedProvider={null}
-                    instanceEntries={entries}
-                    modelOptionsByInstance={options}
-                    getModelDisabledReason={modelDisabledReason}
-                    onOpenProviderSetup={(instanceId) =>
-                      void navigate({
-                        to: "/settings/providers",
-                        search: { environmentId, instanceId },
-                      })
-                    }
-                    onInstanceModelChange={(instanceId, model) =>
-                      setSelection(pickModelSelection(modelSelection, instanceId, model))
-                    }
-                  />
-                )}
-              </div>
-            ) : null}
-            <div className="space-y-2">
-              <label htmlFor={`${inputId}-instructions`} className="text-sm font-medium">
-                <T>Instructions</T>
-              </label>
-              <Textarea
-                id={`${inputId}-instructions`}
-                value={instructions}
-                maxLength={2000}
-                rows={3}
-                onChange={(event) => setInstructions(event.currentTarget.value)}
-                placeholder={gt("Give this bot one job and say what it should leave to others.")}
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor={`${inputId}-memory`} className="text-sm font-medium">
-                <T>Memory</T>
-              </label>
-              <Textarea
-                id={`${inputId}-memory`}
-                value={memory}
-                maxLength={6000}
-                rows={3}
-                onChange={(event) => setMemory(event.currentTarget.value)}
-                placeholder={gt("Facts and preferences to carry into future conversations.")}
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor={`${inputId}-compact`} className="text-sm font-medium">
-                <T>Claude auto-compact window</T>
-              </label>
-              <Input
-                id={`${inputId}-compact`}
-                value={compact}
-                maxLength={7}
-                inputMode="numeric"
-                aria-invalid={!validCompact}
-                onChange={(event) => setCompact(event.currentTarget.value)}
-                placeholder={gt("Use provider setting")}
-              />
-              <p className="text-xs text-muted-foreground">
-                <T>
-                  Optional. Enter 100,000 to 1,000,000 tokens without commas. Applies only to
-                  Claude; other providers keep their own settings.
-                </T>
-              </p>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <label htmlFor={`${inputId}-pin`} className="text-sm font-medium">
-                <T>Pin to launcher</T>
-              </label>
-              <Switch
-                id={`${inputId}-pin`}
-                checked={pinned}
-                disabled={!canPin && !pinned}
-                onCheckedChange={setPinned}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            {bot !== null ? (
-              <div className="me-auto">
-                <Button type="button" variant="ghost" disabled={busy} onClick={() => void remove()}>
-                  {gt("Remove bot, keep chat")}
+              <div className="flex items-center gap-3">
+                <BotAvatar appearance={avatar} size={48} animate />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingAvatar(true)}
+                >
+                  {gt("Edit avatar")}
                 </Button>
               </div>
-            ) : null}
-            <Button
-              type="submit"
-              disabled={!name.trim() || busy || !validCompact || (bot === null && modelUnavailable)}
-            >
-              {bot === null ? gt("Create bot") : gt("Save changes")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogPopup>
-    </Dialog>
+              {bot === null ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    <T>Model</T>
+                  </span>
+                  {modelSelection === null ? (
+                    <span className="text-sm text-muted-foreground">
+                      <T>No providers available</T>
+                    </span>
+                  ) : (
+                    <ProviderModelPicker
+                      environmentId={environmentId}
+                      activeInstanceId={modelSelection.instanceId}
+                      model={modelSelection.model}
+                      lockedProvider={null}
+                      instanceEntries={entries}
+                      modelOptionsByInstance={options}
+                      getModelDisabledReason={modelDisabledReason}
+                      onOpenProviderSetup={(instanceId) =>
+                        void navigate({
+                          to: "/settings/providers",
+                          search: { environmentId, instanceId },
+                        })
+                      }
+                      onInstanceModelChange={(instanceId, model) =>
+                        setSelection(pickModelSelection(modelSelection, instanceId, model))
+                      }
+                    />
+                  )}
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <label htmlFor={`${inputId}-instructions`} className="text-sm font-medium">
+                  <T>Instructions</T>
+                </label>
+                <Textarea
+                  id={`${inputId}-instructions`}
+                  value={instructions}
+                  maxLength={2000}
+                  rows={3}
+                  onChange={(event) => setInstructions(event.currentTarget.value)}
+                  placeholder={gt("Give this bot one job and say what it should leave to others.")}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor={`${inputId}-memory`} className="text-sm font-medium">
+                  <T>Memory</T>
+                </label>
+                <Textarea
+                  id={`${inputId}-memory`}
+                  value={memory}
+                  maxLength={6000}
+                  rows={3}
+                  onChange={(event) => setMemory(event.currentTarget.value)}
+                  placeholder={gt("Facts and preferences to carry into future conversations.")}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor={`${inputId}-compact`} className="text-sm font-medium">
+                  <T>Claude auto-compact window</T>
+                </label>
+                <Input
+                  id={`${inputId}-compact`}
+                  value={compact}
+                  maxLength={7}
+                  inputMode="numeric"
+                  aria-invalid={!validCompact}
+                  onChange={(event) => setCompact(event.currentTarget.value)}
+                  placeholder={gt("Use provider setting")}
+                />
+                <p className="text-xs text-muted-foreground">
+                  <T>
+                    Optional. Enter 100,000 to 1,000,000 tokens without commas. Applies only to
+                    Claude; other providers keep their own settings.
+                  </T>
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor={`${inputId}-pin`} className="text-sm font-medium">
+                  <T>Pin to launcher</T>
+                </label>
+                <Switch
+                  id={`${inputId}-pin`}
+                  checked={pinned}
+                  disabled={!canPin && !pinned}
+                  onCheckedChange={setPinned}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              {bot !== null ? (
+                <div className="me-auto">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => void remove()}
+                  >
+                    {gt("Remove bot, keep chat")}
+                  </Button>
+                </div>
+              ) : null}
+              <Button
+                type="submit"
+                disabled={
+                  !name.trim() || busy || !validCompact || (bot === null && modelUnavailable)
+                }
+              >
+                {bot === null ? gt("Create bot") : gt("Save changes")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+      {editingAvatar ? (
+        <BotAppearanceEditor
+          value={avatar}
+          onChange={setAvatar}
+          onClose={() => setEditingAvatar(false)}
+          {...(bot
+            ? {
+                onDraw: async (description: string) => {
+                  const result = await drawAvatar({
+                    environmentId,
+                    input: { threadId: bot.threadId, description },
+                  });
+                  return result._tag === "Success" ? result.value : null;
+                },
+              }
+            : {})}
+        />
+      ) : null}
+    </>
   );
-}
-
-function botAccentLabel(accent: BotProfile["accent"], gt: ReturnType<typeof useGT>) {
-  switch (accent) {
-    case "sky":
-      return gt("Sky blue");
-    case "mint":
-      return gt("Mint green");
-    case "amber":
-      return gt("Amber");
-    case "rose":
-      return gt("Rose");
-    case "iris":
-      return gt("Indigo");
-    case "slate":
-      return gt("Slate");
-  }
 }
