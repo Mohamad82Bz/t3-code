@@ -290,6 +290,7 @@ import {
 } from "../state/entities";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import { BotsDock } from "./chat/BotsDock";
 import { CodexQuotaDock } from "./chat/CodexQuotaDock";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
@@ -3478,6 +3479,9 @@ export default function ChatView(props: ChatViewProps) {
             onDrop={workspaceFileDropHandlers.onDrop}
           >
             <ThreadFind onClose={focusComposerStable} />
+            {!embedded && !isThreadFindActive ? (
+              <BotsDock environmentId={activeThread.environmentId} threadId={activeThread.id} />
+            ) : null}
             <CodexQuotaDock
               key={activeThread.environmentId}
               environmentId={activeThread.environmentId}

@@ -10809,6 +10809,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     { autoCompactWindow: "650000", model: "claude-sonnet-4-6", threshold: undefined },
     { autoCompactWindow: "650000", model: "uncatalogued-model", threshold: 617_000 },
     {
+      autoCompactWindow: "800000",
+      botWindow: 200_000,
+      model: "uncatalogued-model",
+      threshold: 167_000,
+    },
+    {
       autoCompactWindow: "",
       model: "claude-opus-5-5",
       userSettings: '{"autoCompactWindow":500000}',
@@ -10921,6 +10927,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     "ignores stale snapshots after compaction and reports threshold $autoCompactWindow for $model",
     ({
       autoCompactWindow,
+      botWindow,
       model,
       threshold,
       userSettings,
@@ -10952,8 +10959,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           },
           ...(environment === undefined ? {} : { environment }),
         });
-        yield* harness.runtime.startTurn(
-          makeClaudeTestTurnInput({
+        yield* harness.runtime.startTurn({
+          ...makeClaudeTestTurnInput({
             threadId: harness.threadId,
             providerThread: harness.providerThread,
             now: yield* DateTime.now,
@@ -10966,7 +10973,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               cwd: project,
             }),
           }),
-        );
+          ...(botWindow === undefined ? {} : { claudeAutoCompactWindow: botWindow }),
+        });
+        if (botWindow !== undefined) {
+          const settings = harness.getOpenedOptions()?.settings;
+          assert.equal(
+            typeof settings === "object" && settings?.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW,
+            String(botWindow),
+          );
+        }
         const usage = { ...zeroUsage, input_tokens: 1_000, output_tokens: 75 };
         const frames = [
           usageSnapshotFrame("msg_fallback", "00000000-0000-4000-8000-000000000790", usage),

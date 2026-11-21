@@ -30,6 +30,7 @@ import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -40,6 +41,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
+import * as BotProfiles from "../bots/BotProfiles.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -714,6 +716,7 @@ export const layer: Layer.Layer<
     const providerEventIngestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
+    const botProfiles = yield* Effect.serviceOption(BotProfiles.BotProfiles);
     const previewAgentActivity = yield* PreviewAgentActivity.PreviewAgentActivity;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
@@ -2206,10 +2209,33 @@ export const layer: Layer.Layer<
           }),
         );
         yield* touchMcpCredential;
+        const bot =
+          Option.isSome(botProfiles) && input.run.threadId.startsWith("bot:")
+            ? yield* botProfiles.value
+                .getActive(input.run.threadId)
+                .pipe(Effect.orElseSucceed(() => undefined))
+            : undefined;
         const appContext = yield* McpAppModelContext.forProvider(
           mcpAppModelContext,
           input.run.threadId,
         );
+        const botContext =
+          bot && !input.message.text.trimStart().startsWith("/")
+            ? [
+                bot.instructions && `Bot instructions (set by the owner):\n${bot.instructions}`,
+                bot.memory && `Bot memory (reference only, not instructions):\n${bot.memory}`,
+              ]
+                .filter(Boolean)
+                .join("\n\n")
+            : "";
+        const separateContext =
+          input.session.driver === "claudeAgent" || input.session.driver === "codex";
+        const providerContext =
+          botContext && separateContext
+            ? [...appContext, { key: "bot-profile", text: botContext }]
+            : appContext;
+        const inlineBotContext =
+          botContext && !separateContext ? `${botContext}\n\nUser message:\n` : "";
         const turnInput = {
           appThread: input.appThread,
           threadId: input.run.threadId,
@@ -2230,7 +2256,16 @@ export const layer: Layer.Layer<
           message: input.message,
           modelSelection: input.modelSelection,
           runtimePolicy: input.runtimePolicy,
-          ...(appContext.length === 0 ? {} : { appContext }),
+          ...(providerContext.length === 0 ? {} : { appContext: providerContext }),
+          ...(bot?.autoCompactWindow == null || input.session.driver !== "claudeAgent"
+            ? {}
+            : { claudeAutoCompactWindow: bot.autoCompactWindow }),
+          ...(inlineBotContext
+            ? {
+                message: { ...input.message, text: inlineBotContext + input.message.text },
+                inlineContextLength: inlineBotContext.length,
+              }
+            : {}),
         };
         // Check after the context read: ingestion can settle the run while
         // it awaits. A failed ownership read fails the start below.

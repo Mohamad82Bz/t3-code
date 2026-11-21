@@ -118,6 +118,7 @@ import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import * as BotService from "./bots/BotService.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as ThreadViewers from "./orchestration-v2/ThreadViewers.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
@@ -1484,6 +1485,7 @@ export const layerWsRpc = (
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const threadPresence = yield* ThreadPresence.ThreadPresence;
+      const bots = yield* BotService.BotService;
       const threadViewers = yield* ThreadViewers.ThreadViewers;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
@@ -1993,6 +1995,9 @@ export const layerWsRpc = (
         [WS_METHODS.issuesUpdate]: (input) => issues.update(input),
         [WS_METHODS.issuesSetState]: (input) => issues.setState(input),
         [WS_METHODS.issuesReact]: (input) => issues.react(input),
+        [WS_METHODS.botsSubscribe]: () => bots.subscribe(),
+        [WS_METHODS.botsSetEnabled]: (input) => bots.setEnabled(input.enabled),
+        [WS_METHODS.botsMutate]: (input) => bots.mutate(input),
         [WS_METHODS.issueTrackersList]: () => issueTrackers.list,
         [WS_METHODS.issueTrackersConnect]: (input) => issueTrackers.connect(input),
         [WS_METHODS.issueTrackersBindProject]: (input) => issueTrackers.bindProject(input),
@@ -3626,6 +3631,7 @@ export const layer = Layer.unwrap(
     const issues = yield* IssueService.IssueService;
     const threadIssues = yield* ThreadIssueService.ThreadIssueService;
     const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
+    const bots = yield* BotService.BotService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
     const peerLinks = yield* PeerLinks.PeerLinks;
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
@@ -3728,6 +3734,7 @@ export const layer = Layer.unwrap(
                 ),
               ),
               Layer.provide(Layer.succeed(PeerLinks.PeerLinks, peerLinks)),
+              Layer.provide(Layer.succeed(BotService.BotService, bots)),
               Layer.provide(Layer.succeed(PeerLinkRequests.PeerLinkRequests, peerLinkRequests)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(

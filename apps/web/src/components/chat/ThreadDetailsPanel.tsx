@@ -1,3 +1,6 @@
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
+import { Link } from "@tanstack/react-router";
 import type {
   EditorId,
   EnvironmentId,
@@ -45,6 +48,9 @@ import {
   THREAD_DETAILS_PANEL_LABEL_CLASS,
 } from "./threadDetailsPanelStyles";
 import { Menu, MenuPopup } from "../ui/menu";
+import { botsSnapshotAtom } from "../../state/bots";
+import { BotAvatar } from "./BotAvatar";
+import { ChevronRightIcon } from "lucide-react";
 
 interface ThreadDetailsPanelProps extends Pick<
   ComponentProps<typeof ThreadDetailsCard>,
@@ -180,6 +186,9 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
         return (
           <>
             <div className="group/details-items">
+              {props.threadId.startsWith("bot:") ? (
+                <BotDetailsRow environmentId={props.environmentId} threadId={props.threadId} />
+              ) : null}
               {show.environment || show.openIn || show.scripts ? (
                 <ThreadDetailsSection
                   headingId="thread-details-workspace-heading"
@@ -333,5 +342,36 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
         );
       }}
     </ThreadDetailsCard>
+  );
+}
+
+function BotDetailsRow({
+  environmentId,
+  threadId,
+}: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+}) {
+  const gt = useGT();
+  const result = useAtomValue(botsSnapshotAtom(environmentId));
+  const bots = AsyncResult.getOrElse(result, () => null);
+  const bot = bots?.enabled
+    ? bots.bots.find((candidate) => candidate.threadId === threadId)
+    : undefined;
+  if (!bot) return null;
+  return (
+    <Link
+      to="/settings/bots"
+      search={{ machine: environmentId }}
+      hash={threadId}
+      className="flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2.5 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <BotAvatar name={bot.name} accent={bot.accent} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">{bot.name}</span>
+        <span className="block truncate text-xs text-muted-foreground">{gt("Configure bot")}</span>
+      </span>
+      <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+    </Link>
   );
 }

@@ -26,8 +26,23 @@ setting you are editing, the layers icon counts them and the chain lists each on
 click a project to jump to it, or **Reset all** to make those projects follow the environment
 again.
 
-Providers and diagnostics are per machine: they show one environment at a time, the primary
-one until you pick another. Every other setting fans out to the selection.
+Providers, Bots, and diagnostics are per machine: they show one environment at a time, the primary
+one until you pick another. Settings that support multiple environments fan out to the selection.
+
+## Bots
+
+On web or desktop, open **Settings → Bots**, select an environment, and turn on **Enable Bots**.
+Create a bot and choose a model from that environment. Each bot starts with its own workspace and
+an empty T3 thread. It does not run until you send a message.
+
+Pin up to six bots to the launcher on the left of the conversation. When the gutter is narrow,
+open the launcher from its icon where there is room, or open any bot from Settings. On a bot’s
+thread, **Configure bot** opens that bot’s settings.
+
+Set standing instructions and facts to carry into later turns. For a bot using Claude, you can set
+an optional auto-compact window just for that bot. Leave it empty to inherit the provider setting.
+Claude still reserves its usual headroom. Switching off Bots or removing a bot from the roster
+keeps its chat and workspace.
 
 With a project selected, a provider's switch in **Settings → Providers** turns it on or off for
 that project only, in either direction: a provider off on the machine can be used in one project,

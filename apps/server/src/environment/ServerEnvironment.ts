@@ -265,6 +265,7 @@ export const make = Effect.gen(function* () {
       threadProjectFromScratch: true,
       threadTitleRegeneration: true,
       commandOutputStreaming: true,
+      bots: true,
       threadPresence: true,
       threadPresenceOverview: true,
       threadVisitedTracking: true,

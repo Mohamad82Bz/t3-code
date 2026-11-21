@@ -174,6 +174,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   desktopAppChannelSwitch: Schema.optionalKey(Schema.Boolean),
   /** Subscribe to command output only when advertised; older servers never send it. */
   commandOutputStreaming: Schema.optionalKey(Schema.Boolean),
+  bots: Schema.optionalKey(Schema.Boolean),
   threadPresence: Schema.optionalKey(Schema.Boolean),
   threadPresenceOverview: Schema.optionalKey(Schema.Boolean),
   /** Hosts headless Chromium tabs streamed over /api/preview-stream for clients without a local runtime. */

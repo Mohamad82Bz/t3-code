@@ -27,6 +27,7 @@ export type SettingsPath =
   | "/settings/diffs"
   | "/settings/keybindings"
   | "/settings/snap-shot"
+  | "/settings/bots"
   | "/settings/providers"
   | "/settings/threads"
   | "/settings/browser"
@@ -103,6 +104,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": msg("Keybindings"),
   "/settings/snap-shot": msg("SnapShots"),
   "/settings/providers": msg("Providers"),
+  "/settings/bots": msg("Bots"),
   "/settings/threads": msg("Threads"),
   "/settings/browser": msg("Browser"),
   "/settings/devices": msg("Devices"),
@@ -151,6 +153,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     heading: msg("Agents"),
     paths: [
       "/settings/providers",
+      "/settings/bots",
       "/settings/threads",
       "/settings/browser",
       "/settings/devices",
@@ -240,6 +243,14 @@ const SOURCE_CONTROL_HOST_TERMS = sourceControlClients.definitions
   .join(" ");
 
 export const SETTINGS_SEARCH_ITEMS = [
+  {
+    id: "bots-enabled",
+    targetId: "enable-bots",
+    title: msg("Enable Bots"),
+    to: "/settings/bots",
+    scope: "environment",
+    searchTerms: [msg("bot launcher avatar pinned bot roster")],
+  },
   {
     id: "storage-worktree-keep-when",
     targetId: "storage-worktrees",
@@ -1502,6 +1513,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/snap-shot": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
+  "/settings/bots": "environment",
   "/settings/threads": null,
   "/settings/browser": null,
   "/settings/devices": null,

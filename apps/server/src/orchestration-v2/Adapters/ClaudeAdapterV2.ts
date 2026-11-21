@@ -5288,6 +5288,7 @@ interface ClaudeLiveQueryContext {
   readonly queryPolicy: ClaudeRuntimeQueryPolicy;
   readonly nativeThreadId: string;
   readonly settingsCwd: string | null;
+  readonly autoCompactWindowOverride: string | undefined;
   readonly launchArgSettings: ClaudeSdkSettings | undefined;
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
@@ -5906,6 +5907,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     cwd: string | null,
     modelSelection: ModelSelection,
     launchArgSettings: ClaudeSdkSettings | undefined,
+    configuredWindow = adapterOptions.settings.autoCompactWindow,
   ) {
     // With auto-compaction off Claude never compacts, so there is no threshold to report.
     for (const name of ["DISABLE_COMPACT", "DISABLE_AUTO_COMPACT"]) {
@@ -5925,8 +5927,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       }
     }
     if (autoCompactEnabled === false) return "";
-    if (adapterOptions.settings.autoCompactWindow !== "")
-      return adapterOptions.settings.autoCompactWindow;
+    if (configuredWindow !== "") return configuredWindow;
     const validWindow = (value: unknown) => {
       const selected = Option.getOrUndefined(decodeClaudeCompactWindow(value));
       return typeof selected === "number" && selected >= 100_000 && selected <= 1_000_000
@@ -13090,7 +13091,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? {}
               : { allowedTools: queryPolicy.allowedTools }),
           });
-          const queryPolicyKey = claudeEffectiveQueryPolicyKey(queryPolicy, mcpOverrides);
+          const policyKey = claudeEffectiveQueryPolicyKey(queryPolicy, mcpOverrides);
+          const autoCompactWindowOverride = turnInput.claudeAutoCompactWindow?.toString();
+          const queryPolicyKey =
+            autoCompactWindowOverride === undefined
+              ? policyKey
+              : `${policyKey}:autoCompactWindow=${autoCompactWindowOverride}`;
           const resumeSessionAt = yield* getNativeConversationHeadId(turnInput.providerThread);
           const existing = yield* Ref.get(queryContext);
           // Continuations drain existing output without prompting; retain the live process regardless of selection.
@@ -13224,7 +13230,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ...(resumeSessionAt === undefined ? {} : { resumeSessionAt }),
             cwd: turnInput.runtimePolicy.cwd,
             attachmentsDir,
-            settings: adapterOptions.settings,
+            settings:
+              autoCompactWindowOverride === undefined
+                ? adapterOptions.settings
+                : { ...adapterOptions.settings, autoCompactWindow: autoCompactWindowOverride },
             // Delegated threads have no one typing, so they never ask for suggestions.
             promptSuggestions:
               !isDelegatedAppThread(turnInput.appThread) && (yield* promptSuggestionsEnabled),
@@ -13309,6 +13318,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             queryPolicy,
             nativeThreadId,
             settingsCwd: turnInput.runtimePolicy.cwd,
+            autoCompactWindowOverride,
             launchArgSettings,
             query: querySession,
             queryPolicyKey,
@@ -13586,6 +13596,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               querySession.settingsCwd,
               turnInput.modelSelection,
               querySession.launchArgSettings,
+              querySession.autoCompactWindowOverride,
             );
             const context: ActiveClaudeTurnContext = {
               input: turnInput,

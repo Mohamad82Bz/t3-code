@@ -446,9 +446,13 @@ import {
   SourceControlSignInResult,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import { BotMutation, BotOperationError, BotProfile, BotsSnapshot } from "./bots.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  botsSubscribe: "bots.subscribe",
+  botsSetEnabled: "bots.setEnabled",
+  botsMutate: "bots.mutate",
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
@@ -1443,6 +1447,25 @@ const WsIssueTrackersConnectRpc = Rpc.make(WS_METHODS.issueTrackersConnect, {
   error: IssueTrackerRpcError,
 });
 
+const botRpcError = Schema.Union([BotOperationError, EnvironmentAuthorizationError]);
+
+const WsBotsSubscribeRpc = Rpc.make(WS_METHODS.botsSubscribe, {
+  payload: Schema.Struct({}),
+  success: BotsSnapshot,
+  error: botRpcError,
+  stream: true,
+});
+const WsBotsSetEnabledRpc = Rpc.make(WS_METHODS.botsSetEnabled, {
+  payload: Schema.Struct({ enabled: Schema.Boolean }),
+  success: Schema.Void,
+  error: botRpcError,
+});
+const WsBotsMutateRpc = Rpc.make(WS_METHODS.botsMutate, {
+  payload: BotMutation,
+  success: Schema.NullOr(BotProfile),
+  error: botRpcError,
+});
+
 const WsIssueTrackersBindProjectRpc = Rpc.make(WS_METHODS.issueTrackersBindProject, {
   payload: IssueTrackerBindProjectInput,
   success: Schema.Void,
@@ -2311,6 +2334,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsIssueTrackersListRpc,
   WsIssueTrackersConnectRpc,
   WsIssueTrackersBindProjectRpc,
+  WsBotsSubscribeRpc,
+  WsBotsSetEnabledRpc,
+  WsBotsMutateRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

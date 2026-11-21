@@ -62,6 +62,7 @@ import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as ProviderInstallationGate from "./provider/ProviderInstallationGate.ts";
 import * as Ws from "./ws.ts";
+import * as BotService from "./bots/BotService.ts";
 import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
 import * as RpcTest from "effect/rpc/RpcTest";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -179,7 +180,7 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ProjectEnrichment from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import {
-  layerWsRpc,
+  layerWsRpc as layerWsRpcWithBots,
   resolveOpenDiscoveryForConfig,
   subscribeOrchestrationV2Shell,
   subscribeOrchestrationV2Thread,
@@ -901,6 +902,10 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
 );
 
+const layerBotStub = Layer.mock(BotService.BotService)({});
+const layerWsRpc = (...inputs: Parameters<typeof layerWsRpcWithBots>) =>
+  layerWsRpcWithBots(...inputs).pipe(Layer.provide(layerBotStub));
+
 const layerConfigSources = Layer.mergeAll(
   Keybindings.layer,
   AssetSigner.layer.pipe(Layer.provide(ServerSecretStore.layer)),
@@ -973,7 +978,9 @@ it.live.each([
         FetchHttpClient.layer,
       );
       const context = yield* Layer.build(
-        HttpRouter.serve(Ws.layer, { disableListenLog: true }).pipe(
+        HttpRouter.serve(Ws.layer.pipe(Layer.provide(layerBotStub)), {
+          disableListenLog: true,
+        }).pipe(
           Layer.provideMerge(
             NodeHttpServer.layer(NodeHttp.createServer, {
               host: "127.0.0.1",
