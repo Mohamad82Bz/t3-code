@@ -359,6 +359,12 @@ export type ChatWidth = typeof ChatWidth.Type;
 export const EffortDisplay = Schema.Literals(["label", "bars"]);
 export type EffortDisplay = typeof EffortDisplay.Type;
 
+export const SidebarCodexQuotaDisplay = Schema.Literals(["detailed", "percentages", "hidden"]);
+export type SidebarCodexQuotaDisplay = typeof SidebarCodexQuotaDisplay.Type;
+
+export const SidebarCodexQuotaTextSize = Schema.Literals(["small", "standard", "large"]);
+export type SidebarCodexQuotaTextSize = typeof SidebarCodexQuotaTextSize.Type;
+
 export const ToolCallVisibility = Schema.Literals(["showAll", "hideSuccessful", "hideAll", "zen"]);
 export type ToolCallVisibility = typeof ToolCallVisibility.Type;
 
@@ -502,6 +508,12 @@ export const ClientSettingsSchema = Schema.Struct({
   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),
   environmentIdentificationMode: EnvironmentIdentificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE)),
+  ),
+  sidebarCodexQuotaDisplay: SidebarCodexQuotaDisplay.pipe(
+    Schema.withDecodingDefault(Effect.succeed("detailed" as const)),
+  ),
+  sidebarCodexQuotaTextSize: SidebarCodexQuotaTextSize.pipe(
+    Schema.withDecodingDefault(Effect.succeed("standard" as const)),
   ),
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
@@ -2174,6 +2186,8 @@ export const ClientSettingsPatch = Schema.Struct({
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   diffLayout: Schema.optionalKey(DiffLayout),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
+  sidebarCodexQuotaDisplay: Schema.optionalKey(SidebarCodexQuotaDisplay),
+  sidebarCodexQuotaTextSize: Schema.optionalKey(SidebarCodexQuotaTextSize),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   fontSizeInterface: Schema.optionalKey(InterfaceFontSize),

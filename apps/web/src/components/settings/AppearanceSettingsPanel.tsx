@@ -37,6 +37,7 @@ import {
 import { useSearchableSetting } from "./settingsSearch";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
+import { SidebarCodexQuotaSettings } from "./SidebarCodexQuotaSettings";
 import { TypographySection } from "./TypographySettings";
 import { ThreadDetailsItemsRow } from "./ThreadDetailsItemsRow";
 
@@ -555,6 +556,7 @@ export function AppearanceSettingsPanel() {
         </AdvancedSettings>
       </SettingsSection>
 
+      <SidebarCodexQuotaSettings />
       <TypographySection />
     </SettingsPageContainer>
   );

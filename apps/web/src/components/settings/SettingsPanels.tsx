@@ -518,6 +518,12 @@ export function useSettingsRestore(onRestored?: () => void) {
     DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode
       ? [gt("Environment identification")]
       : []),
+    ...(settings.sidebarCodexQuotaDisplay !== DEFAULT_UNIFIED_SETTINGS.sidebarCodexQuotaDisplay
+      ? [gt("Quota display")]
+      : []),
+    ...(settings.sidebarCodexQuotaTextSize !== DEFAULT_UNIFIED_SETTINGS.sidebarCodexQuotaTextSize
+      ? [gt("Quota text size")]
+      : []),
     ...(settings.language !== DEFAULT_UNIFIED_SETTINGS.language ? [gt("Language")] : []),
     ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
       ? [gt("Time format")]
@@ -750,6 +756,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       screenReaderAnnouncements: DEFAULT_UNIFIED_SETTINGS.screenReaderAnnouncements,
       screenReaderWindowTitle: DEFAULT_UNIFIED_SETTINGS.screenReaderWindowTitle,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
+      sidebarCodexQuotaDisplay: DEFAULT_UNIFIED_SETTINGS.sidebarCodexQuotaDisplay,
+      sidebarCodexQuotaTextSize: DEFAULT_UNIFIED_SETTINGS.sidebarCodexQuotaTextSize,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,

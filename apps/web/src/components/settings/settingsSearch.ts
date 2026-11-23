@@ -419,6 +419,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "appearance-interface",
   },
   {
+    id: "sidebar-codex-quota-display",
+    title: msg("Quota display"),
+    to: "/settings/appearance",
+    searchTerms: [msg("sidebar Codex usage limits show hide percentages reset countdown")],
+  },
+  {
+    id: "sidebar-codex-quota-size",
+    title: msg("Quota text size"),
+    to: "/settings/appearance",
+    searchTerms: [msg("sidebar Codex quota font size small large")],
+  },
+  {
     id: "interface-font",
     title: msg("Interface font"),
     to: "/settings/appearance",

@@ -5,7 +5,7 @@ import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useAtomValue } from "@effect/atom-react";
-import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useClientSettings, useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useThreadRouteTarget } from "../../hooks/useThreadRouteTarget";
 import { useComposerDraftStore } from "../../composerDraftStore";
@@ -238,7 +238,15 @@ function SidebarUtilityItem({
 }
 
 function SidebarCodexQuotaTotals() {
+  const display = useClientSettings((settings) => settings.sidebarCodexQuotaDisplay);
+  return display === "hidden" ? null : (
+    <SidebarCodexQuotaValues detailed={display === "detailed"} />
+  );
+}
+
+function SidebarCodexQuotaValues({ detailed }: { detailed: boolean }) {
   const gt = useGT();
+  const textSize = useClientSettings((settings) => settings.sidebarCodexQuotaTextSize);
   const serverConfigs = useAtomValue(environmentPresentations.serverConfigsAtom);
   const routeTarget = useThreadRouteTarget();
   const draftEnvironmentId = useComposerDraftStore((store) =>
@@ -257,9 +265,25 @@ function SidebarCodexQuotaTotals() {
 
   const session = totals.session;
   const weekly = totals.weekly;
-  const sessionLabel = session === null ? "unavailable" : `${session.remaining}%`;
-  const weeklyLabel = weekly === null ? "unavailable" : `${weekly.remaining}%`;
-  const description = `Codex total remaining: ${sessionLabel} for 5-hour and ${weeklyLabel} for weekly quotas.${session?.weeklyExhaustedCount ? ` ${session.weeklyExhaustedCount} account${session.weeklyExhaustedCount === 1 ? "" : "s"} has exhausted weekly quota.` : ""}`;
+  const sessionLabel = session === null ? "–" : `${session.remaining}%`;
+  const weeklyLabel = weekly === null ? "–" : `${weekly.remaining}%`;
+  const sessionReset = session?.replenishment
+    ? formatCodexQuotaReplenishment(session.replenishment, now)
+    : null;
+  const weeklyReset = weekly?.replenishment
+    ? formatCodexQuotaReplenishment(weekly.replenishment, now)
+    : null;
+  const exhausted = session?.weeklyExhaustedCount ?? 0;
+  const description = gt("Codex quota remaining: {session} for 5 hours, {weekly} for the week.", {
+    session: sessionLabel,
+    weekly: weeklyLabel,
+  });
+  const detailClass =
+    textSize === "large"
+      ? "text-2xs/none"
+      : textSize === "small"
+        ? "text-5xs/none"
+        : "text-4xs/none";
 
   return (
     <SidebarMenuItem className="min-w-0 flex-1">
@@ -269,39 +293,47 @@ function SidebarCodexQuotaTotals() {
             <span
               role="img"
               aria-label={description}
-              className="flex min-w-0 flex-1 cursor-default items-center justify-center gap-1 text-2xs tabular-nums text-sidebar-muted-foreground"
+              tabIndex={0}
+              className={cn(
+                "grid min-w-0 cursor-default grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-x-1 rounded-sm text-center tabular-nums text-sidebar-muted-foreground outline-hidden focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
+                textSize === "large"
+                  ? "text-sm/none"
+                  : textSize === "small"
+                    ? "text-3xs/none"
+                    : "text-2xs/none",
+              )}
             />
           }
         >
-          <span className="flex min-w-0 flex-1 flex-col items-center leading-none">
-            <span className="flex items-baseline gap-0.5">
-              <span>{sessionLabel}</span>
-              {session?.weeklyExhaustedCount ? (
-                <span className="text-5xs text-destructive">-{session.weeklyExhaustedCount}</span>
-              ) : null}
-            </span>
-            <span className="mt-0.5 min-h-3 whitespace-nowrap text-5xs text-sidebar-muted-foreground/70">
-              {session?.replenishment
-                ? formatCodexQuotaReplenishment(session.replenishment, now)
-                : " "}
-            </span>
+          <span className="truncate">
+            {sessionLabel}
+            {detailed && exhausted > 0 ? (
+              <span className={cn("ms-0.5 text-destructive", detailClass)}>-{exhausted}</span>
+            ) : null}
           </span>
-          <span aria-hidden className="shrink-0 text-sidebar-muted-foreground/60">
+          <span aria-hidden className="text-sidebar-muted-foreground/60">
             /
           </span>
-          <span className="flex min-w-0 flex-1 flex-col items-center leading-none">
-            <span>{weeklyLabel}</span>
-            <span className="mt-0.5 min-h-3 whitespace-nowrap text-5xs text-sidebar-muted-foreground/70">
-              {weekly?.replenishment
-                ? formatCodexQuotaReplenishment(weekly.replenishment, now)
-                : " "}
-            </span>
-          </span>
+          <span className="truncate">{weeklyLabel}</span>
+          {detailed && (sessionReset || weeklyReset) ? (
+            <>
+              <span className={cn("mt-0.5 truncate", detailClass)}>{sessionReset}</span>
+              <span className={cn("col-start-3 mt-0.5 truncate", detailClass)}>{weeklyReset}</span>
+            </>
+          ) : null}
         </TooltipTrigger>
         <TooltipPopup side="top">
-          {gt(
-            "5-hour / weekly Codex total remaining for this environment, including disabled accounts. The red count shows accounts with exhausted weekly quota; replenishment uses the nearest account.",
-          )}
+          <div>{description}</div>
+          {sessionReset ? (
+            <div>{gt("Next 5-hour reset: {reset}", { reset: sessionReset })}</div>
+          ) : null}
+          {weeklyReset ? (
+            <div>{gt("Next weekly reset: {reset}", { reset: weeklyReset })}</div>
+          ) : null}
+          {exhausted > 0 ? (
+            <div>{gt("Accounts with exhausted weekly quota: {count}", { count: exhausted })}</div>
+          ) : null}
+          <div>{gt("Totals include disabled accounts in this environment.")}</div>
         </TooltipPopup>
       </Tooltip>
     </SidebarMenuItem>
