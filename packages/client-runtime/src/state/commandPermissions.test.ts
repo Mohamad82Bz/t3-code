@@ -11,6 +11,7 @@ import {
   AuthAccessWriteScope,
   AuthEnvironmentMaintainScope,
   AuthOrchestrationOperateScope,
+  AuthTerminalOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
   AuthProvidersManageScope,
@@ -187,6 +188,9 @@ describe("command permissions", () => {
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.botsSetEnabled, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.workspaceAddTaskFolderRepository, scope: AuthSourceControlWriteScope },
+    { method: WS_METHODS.providerMcpSignInStart, scope: AuthProvidersManageScope },
+    { method: WS_METHODS.providerMcpSignInComplete, scope: AuthProvidersManageScope },
   ])("requires the destination $scope grant for $method", ({ method, scope }) =>
     Effect.gen(function* () {
       const registry = yield* setup;
@@ -257,6 +261,9 @@ describe("command permissions", () => {
     WS_METHODS.scheduledTasksDelete,
     WS_METHODS.botsMutate,
     ORCHESTRATION_V2_WS_METHODS.stopWorkflow,
+    WS_METHODS.workflowsAnswer,
+    WS_METHODS.workflowsResume,
+    WS_METHODS.workflowsCancel,
   ])("uses the target grant for both availability and execution of %s", (method) =>
     Effect.gen(function* () {
       const registry = yield* setup;
@@ -269,6 +276,24 @@ describe("command permissions", () => {
       expect(registry.get(permissions.permissionAtom(other))).toBe(false);
       const denied = yield* permissions.authorize(registry, other).pipe(Effect.flip);
       expect(denied._tag).toBe("EnvironmentAuthorizationError");
+    }),
+  );
+  it.effect("saving workflow definitions takes more than operating threads", () =>
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      const saving = createCommandPermissions(runtime, WS_METHODS.workflowsSaveDefinition);
+      // The server runs that file, so the grant that answers a question does not cover it.
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      expect(registry.get(saving.permissionAtom(env))).toBe(false);
+      registry.set(
+        sessions(env),
+        AsyncResult.success({
+          ...grant(true),
+          scopes: [AuthTerminalOperateScope],
+          permissions: [AuthTerminalOperateScope],
+        }),
+      );
+      expect(registry.get(saving.permissionAtom(env))).toBe(true);
     }),
   );
   it.effect("waits for an initial grant", () =>
@@ -567,6 +592,21 @@ it.effect("requires access management to answer a link request", () =>
         permissions: [AuthAccessWriteScope],
       }),
     );
+    expect(registry.get(answer.permissionAtom(env))).toBe(true);
+    yield* answer.authorize(registry, env);
+  }),
+);
+
+it.effect("requires thread operation to answer a feedback card", () =>
+  Effect.gen(function* () {
+    const registry = yield* setup;
+    registry.set(sessions(env), AsyncResult.success(grant(false)));
+    const answer = createCommandPermissions(runtime, WS_METHODS.agentFeedbackAnswerRequest);
+    expect(registry.get(answer.permissionAtom(env))).toBe(false);
+    expect((yield* answer.authorize(registry, env).pipe(Effect.flip)).requiredPermission).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    registry.set(sessions(env), AsyncResult.success(grant(true)));
     expect(registry.get(answer.permissionAtom(env))).toBe(true);
     yield* answer.authorize(registry, env);
   }),

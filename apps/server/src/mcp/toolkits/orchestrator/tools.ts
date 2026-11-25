@@ -145,7 +145,7 @@ const WorkflowStopTool = Tool.make("t3_workflow_stop", {
 
 const BackgroundWaitTool = Tool.make("t3_background_wait", {
   description:
-    "Keep this thread in Working while background work runs. Pass its task ID once started. Not for work left running (dev server, watcher). `waiting=false` clears. Doesn't stop tasks. Claude/OpenCode only.",
+    "Keep this thread in Working while background work runs. Pass its task ID once started. Not for work left running (dev server, watcher). `waiting=false` clears. Doesn't stop tasks.",
   parameters: Schema.Struct({
     taskIds: Schema.Array(TrimmedNonEmptyString).check(
       Schema.isMinLength(1),
@@ -165,7 +165,7 @@ const BackgroundWaitTool = Tool.make("t3_background_wait", {
   // Only marks which tasks keep the thread Working; Claude Plan mode blocks tools without this.
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
-  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenWithoutBackgroundWait);
 
 const ScheduleTaskTool = Tool.make("schedule_task", {
   description:
@@ -350,7 +350,7 @@ const EnvironmentLinkTool = Tool.make("t3_environment_link", {
 
 const EnvironmentUnlinkTool = Tool.make("t3_environment_unlink", {
   description:
-    "Forget a linked environment. That machine's Connections list its session until revoked there.",
+    "Forget a linked environment. Its session on that machine ends too when the machine answers.",
   parameters: OrchestratorMcpEnvironmentUnlinkInput,
   success: OrchestratorMcpEnvironmentUnlinkResult,
   failure: OrchestratorMcpFailure,

@@ -135,6 +135,16 @@ Expand a tool call to inspect its command and output. For a descriptive title on
 an inline script, ask Codex to put `# t3-title: Describe the operation` on the first
 line of its shell command. This works with PowerShell and Unix shells, not `cmd.exe`.
 
+## Sign in to an MCP server
+
+When an MCP server you added to Codex needs you to sign in, the thread shows a notice with
+**Sign in**; on mobile, tap the notice. Approve access on the page it opens. Your browser then goes
+to a page that may not load, especially when Codex runs on another machine: copy that page's
+address, paste it into T3 Code, and choose **Finish sign-in**. Codex reconnects the server in that
+thread and keeps the sign-in for other threads on the same Codex instance; an instance with its own
+home, such as a second account, may need to sign in separately. Signing in needs permission to
+manage providers.
+
 ## Use the OpenAI Chrome extension
 
 Connecting ChatGPT in **Settings → Providers** signs in the Codex provider.
